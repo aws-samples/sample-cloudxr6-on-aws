@@ -1,0 +1,21 @@
+# Deploy-time artifacts — must not be baked into the image.
+#
+# deploy.sh writes public/config.json (Cognito IDs for the live stack) and harvests
+# the CloudXR.js React sample into public/cloudxr/, then uploads public/ to S3.
+# CloudFront serves that content from S3 — the image only needs the fallback login
+# page. Excluding them here does not affect the S3 upload, which reads from disk.
+#
+# Baking them in would: add ~67MB to the image, embed Cognito IDs belonging to
+# whatever stack was last deployed, and make the image depend on local state — so a
+# fresh clone would produce a different image than a machine that had already run
+# deploy.sh. The build must be reproducible from a clean checkout.
+public/cloudxr/
+public/config.json
+
+# Local dependency tree — npm install runs inside the image
+node_modules/
+npm-debug.log
+
+# Not needed at runtime
+build-proxy.sh
+.dockerignore

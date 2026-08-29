@@ -1,0 +1,772 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: CloudXR 6 on AWS — Full Reference Architecture
+
+# ============================================================================
+# Parameters
+# ============================================================================
+Parameters:
+  GpuComputeZone:
+    Type: String
+    Description: Availability Zone or Local Zone for GPU instances (e.g., us-west-2-lax-1b)
+
+  GpuInstanceType:
+    Type: String
+    Default: g7e.8xlarge
+    Description: GPU instance type (must be available in GpuComputeZone)
+
+  GpuAmiId:
+    Type: AWS::EC2::Image::Id
+    Description: Golden AMI ID with CloudXR Runtime and your XR application
+
+  DomainName:
+    Type: String
+    Description: Proxy domain (e.g., cloudxr.example.com)
+
+  HostedZoneId:
+    Type: String
+    Description: Route 53 hosted zone ID
+
+  AcmCertificateArn:
+    Type: String
+    Description: ACM certificate ARN for CloudFront (must be in us-east-1)
+
+  WebRTCPoolSize:
+    Type: Number
+    Default: 1
+    MinValue: 0
+    MaxValue: 20
+    Description: Number of GPU instances for WebRTC clients (Quest, Pico, browsers)
+
+  RegionalCertificateArn:
+    Type: String
+    Description: >-
+      ACM certificate ARN in the DEPLOYMENT region (not us-east-1), used by the ALB's
+      HTTPS listener so the CloudFront-to-origin hop is encrypted. It must be valid for
+      'origin.<DomainName>', because CloudFront validates the origin certificate against
+      the hostname it connects to — an ALB's own *.elb.amazonaws.com name would not match
+      a certificate issued for your domain. Request it with a SAN covering origin.<domain>.
+
+  ProxyImage:
+    Type: String
+    Default: 'public.ecr.aws/e8e8t8v2/cloudxr6-proxy:v3.0.0'
+    Description: >-
+      Container image for the signaling proxy. Defaults to the pre-built public image.
+      Override it if you modify proxy/ source and publish your own build — see
+      proxy/build-proxy.sh.
+
+  CloudFrontPrefixListId:
+    Type: String
+    Description: >-
+      AWS-managed prefix list for CloudFront origin-facing IP ranges
+      (com.amazonaws.global.cloudfront.origin-facing). The ID is region-specific;
+      deploy.sh looks it up automatically. Restricting the ALB to this list stops
+      clients from reaching the ALB directly over plain HTTP and bypassing CloudFront.
+
+  NativePoolSize:
+    Type: Number
+    Default: 0
+    MinValue: 0
+    MaxValue: 20
+    Description: Number of GPU instances for native clients (Apple Vision Pro)
+
+# ============================================================================
+# Conditions
+# ============================================================================
+Conditions:
+  CreateWebRTCPool: !Not [!Equals [!Ref WebRTCPoolSize, 0]]
+  CreateNativePool: !Not [!Equals [!Ref NativePoolSize, 0]]
+
+# ============================================================================
+# Resources
+# ============================================================================
+Resources:
+
+  # --------------------------------------------------------------------------
+  # Networking
+  # --------------------------------------------------------------------------
+  VPC:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.0.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: CloudXR-VPC
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  PublicRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  PublicRoute:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref PublicRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  # Two subnets in parent region for ALB (requires 2 AZs)
+  RegionSubnet1:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.1.0/24
+      AvailabilityZone: !Select [0, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CloudXR-Region-Subnet-1
+
+  RegionSubnet2:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.2.0/24
+      AvailabilityZone: !Select [1, !GetAZs '']
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CloudXR-Region-Subnet-2
+
+  # GPU subnet in the specified zone (Local Zone or AZ)
+  GpuSubnet:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: 10.0.10.0/24
+      AvailabilityZone: !Ref GpuComputeZone
+      MapPublicIpOnLaunch: true
+      Tags:
+        - Key: Name
+          Value: CloudXR-GPU-Subnet
+
+  # Route table associations
+  RegionSubnet1RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref RegionSubnet1
+      RouteTableId: !Ref PublicRouteTable
+
+  RegionSubnet2RTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref RegionSubnet2
+      RouteTableId: !Ref PublicRouteTable
+
+  GpuSubnetRTA:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref GpuSubnet
+      RouteTableId: !Ref PublicRouteTable
+
+  # --------------------------------------------------------------------------
+  # Security Groups
+  # --------------------------------------------------------------------------
+  AlbSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: ALB - 443 from CloudFront only; 48322 from internet for native signaling
+      VpcId: !Ref VPC
+      # Two ingress paths, deliberately different:
+      #
+      #   443   — web clients, reachable only from CloudFront's origin-facing prefix list.
+      #           The ALB is internet-facing (it must be, to serve as a CloudFront origin),
+      #           so an open rule here would let anyone bypass CloudFront and its edge
+      #           protection. There is no plaintext listener.
+      #
+      #   48322 — native (Apple) clients, open to the internet. This is not a preference;
+      #           CloudXRKit compiles its secure-signaling port in and offers no override
+      #           (`.remoteSecure` takes no port argument), while CloudFront serves viewer
+      #           traffic only on 80/443. The two cannot meet, so native clients must reach
+      #           the ALB directly. See the security note below and the port table in
+      #           architecture.md.
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 443
+          ToPort: 443
+          SourcePrefixListId: !Ref CloudFrontPrefixListId
+          # NOTE: a prefix-list rule consumes MaxEntries (55) against the default
+          # 60-rules-per-security-group quota, so this group has little headroom.
+          # Adding a second prefix-list rule here will fail with
+          # RulesPerSecurityGroupLimitExceeded — request a quota increase first.
+          # A plain CIDR rule (like 48322 below) costs one entry, so it fits.
+        # SECURITY TRADEOFF, stated plainly: this port is open to 0.0.0.0/0 and is not
+        # behind CloudFront, so native signaling gets no WAF and no Shield. The proxy's
+        # Cognito check on the WebSocket upgrade is the only gate — an unauthenticated
+        # upgrade is rejected with 401 (see handleUpgrade in proxy/index.js). The port is
+        # created unconditionally, including when NativePoolSize is 0, so that one
+        # topology holds for every deployment; restrict this to known client CIDRs if
+        # your environment allows it.
+        - IpProtocol: tcp
+          FromPort: 48322
+          ToPort: 48322
+          CidrIp: 0.0.0.0/0
+
+  ProxySecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Fargate proxy - from ALB only
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        - IpProtocol: tcp
+          FromPort: 8080
+          ToPort: 8080
+          SourceSecurityGroupId: !Ref AlbSecurityGroup
+
+  GpuSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: GPU instances - signaling from proxy + media from internet
+      VpcId: !Ref VPC
+      SecurityGroupIngress:
+        # Signaling from proxy (VPC internal)
+        - IpProtocol: tcp
+          FromPort: 48010
+          ToPort: 48010
+          SourceSecurityGroupId: !Ref ProxySecurityGroup
+        - IpProtocol: tcp
+          FromPort: 49100
+          ToPort: 49100
+          SourceSecurityGroupId: !Ref ProxySecurityGroup
+        # Media from clients (direct UDP, ICE-negotiated within the CloudXR media port range)
+        - IpProtocol: udp
+          FromPort: 47998
+          ToPort: 48012
+          CidrIp: 0.0.0.0/0
+
+  # --------------------------------------------------------------------------
+  # Application Load Balancer
+  # --------------------------------------------------------------------------
+  ALB:
+    Type: AWS::ElasticLoadBalancingV2::LoadBalancer
+    Properties:
+      Name: cloudxr-alb
+      Scheme: internet-facing
+      Type: application
+      Subnets:
+        - !Ref RegionSubnet1
+        - !Ref RegionSubnet2
+      SecurityGroups:
+        - !Ref AlbSecurityGroup
+
+  ALBTargetGroup:
+    Type: AWS::ElasticLoadBalancingV2::TargetGroup
+    Properties:
+      Name: cloudxr-proxy-tg
+      Port: 8080
+      Protocol: HTTP
+      VpcId: !Ref VPC
+      TargetType: ip
+      HealthCheckPath: /health
+      HealthCheckProtocol: HTTP
+      # Default is 300s. Fargate ENIs are not released until deregistration completes,
+      # so the default would make security-group deletion fail during teardown.
+      TargetGroupAttributes:
+        - Key: deregistration_delay.timeout_seconds
+          Value: '30'
+
+  # HTTPS only. There is deliberately no HTTP:80 listener — the CloudFront-to-origin
+  # hop carries the Cognito JWT (in the /api/session body, and as a header, cookie or
+  # query parameter on the signaling upgrade), so it must not travel in cleartext.
+  ALBListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 443
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref RegionalCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # Native (Apple) signaling listener.
+  #
+  # Native clients do not traverse CloudFront. CloudXRKit's `.remoteSecure` connection type
+  # has no port parameter — the secure-signaling port is compiled into the framework, which
+  # attempts 322 and then 48322 (NVIDIA documents 48322 for secure connections; see
+  # network-setup and the cloudxr-js proxy topology `wss://<proxy>:48322`). CloudFront accepts
+  # viewer connections only on 80/443 and cannot be configured to serve 48322, so the native
+  # client and a CloudFront-fronted proxy cannot meet. Native clients therefore connect
+  # straight to the ALB at origin.<domain>:48322, which the regional certificate already
+  # covers.
+  #
+  # Web clients are unaffected and still arrive via CloudFront on 443. Both paths terminate on
+  # the same target group and the same proxy, which authenticates every upgrade against Cognito
+  # and selects the backend pool from the x-cloudxr-device-type header.
+  #
+  # Same TLS policy as the 443 listener. CloudXRKit negotiates TLS 1.2 with
+  # ECDHE-RSA-AES256-GCM-SHA384, which this policy permits.
+  ALBNativeSignalingListener:
+    Type: AWS::ElasticLoadBalancingV2::Listener
+    Properties:
+      LoadBalancerArn: !Ref ALB
+      Port: 48322
+      Protocol: HTTPS
+      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
+      Certificates:
+        - CertificateArn: !Ref RegionalCertificateArn
+      DefaultActions:
+        - Type: forward
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  # --------------------------------------------------------------------------
+  # Route 53 — two records, because there are two client ingress paths.
+  #
+  #   <domain>         -> CloudFront. Entry point for web clients: static content from S3,
+  #                       API and WebSocket signaling forwarded to the ALB on 443.
+  #   origin.<domain>  -> ALB. Required as CloudFront's origin hostname (see OriginDNSRecord),
+  #                       and also the hostname native clients connect to on 48322, since
+  #                       CloudFront cannot serve that port.
+  # --------------------------------------------------------------------------
+  DNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Ref DomainName
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt CloudFrontDistribution.DomainName
+        HostedZoneId: Z2FDTNDATAQYW2  # CloudFront hosted zone ID (constant)
+
+  # CloudFront connects to the ALB by this hostname rather than its
+  # *.elb.amazonaws.com name, so the certificate presented by the ALB matches the
+  # hostname CloudFront asked for. Without this, an https-only origin fails validation.
+  #
+  # Native clients also target this name directly on 48322, and rely on the same certificate
+  # match — CloudXRKit validates the server against system trust, so the name must be one the
+  # regional certificate covers. Exposed as the NativeSignalingHost stack output.
+  OriginDNSRecord:
+    Type: AWS::Route53::RecordSet
+    Properties:
+      HostedZoneId: !Ref HostedZoneId
+      Name: !Sub 'origin.${DomainName}'
+      Type: A
+      AliasTarget:
+        DNSName: !GetAtt ALB.DNSName
+        HostedZoneId: !GetAtt ALB.CanonicalHostedZoneID
+
+  # --------------------------------------------------------------------------
+  # S3 + CloudFront (Web Client Hosting)
+  # --------------------------------------------------------------------------
+  WebClientBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub 'cloudxr-webclient-${AWS::AccountId}-${AWS::Region}'
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  WebClientBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref WebClientBucket
+      PolicyDocument:
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub '${WebClientBucket.Arn}/*'
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub 'arn:${AWS::Partition}:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}'
+
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub 'cloudxr-webclient-oac-${AWS::Region}'
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        Aliases:
+          - !Ref DomainName
+        ViewerCertificate:
+          AcmCertificateArn: !Ref AcmCertificateArn
+          SslSupportMethod: sni-only
+          MinimumProtocolVersion: TLSv1.2_2021
+        DefaultRootObject: index.html
+        Origins:
+          # S3 origin for static web client
+          - Id: S3Origin
+            DomainName: !GetAtt WebClientBucket.RegionalDomainName
+            OriginAccessControlId: !Ref CloudFrontOAC
+            S3OriginConfig:
+              OriginAccessIdentity: ''
+          # ALB origin for proxy API and WebSocket
+          - Id: ALBOrigin
+            DomainName: !Sub 'origin.${DomainName}'
+            CustomOriginConfig:
+              HTTPSPort: 443
+              OriginProtocolPolicy: https-only
+              OriginSSLProtocols:
+                - TLSv1.2
+        DefaultCacheBehavior:
+          TargetOriginId: S3Origin
+          ViewerProtocolPolicy: redirect-to-https
+          CachePolicyId: 658327ea-f89d-4fab-a63d-7e88639e58f6  # CachingOptimized
+          Compress: true
+        CacheBehaviors:
+          # API calls go to ALB
+          - PathPattern: /api/*
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
+            AllowedMethods: [GET, HEAD, OPTIONS, PUT, PATCH, POST, DELETE]
+          # Health check goes to ALB
+          - PathPattern: /health
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+          # WebSocket signaling goes to ALB (CloudXR SDK connects to /*/sign_in?... with signalingResourcePath)
+          - PathPattern: /*/sign_in*
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
+          # WebSocket signaling — direct path (without signalingResourcePath prefix)
+          - PathPattern: /sign_in*
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
+
+  # --------------------------------------------------------------------------
+  # ECS Fargate (Proxy Service)
+  # --------------------------------------------------------------------------
+  EcsCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: cloudxr-cluster
+
+  EcsTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy'
+
+  EcsTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: CloudXRProxyPolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                # Exactly what proxy/index.js calls: ScanCommand + UpdateCommand
+                Action:
+                  - dynamodb:Scan
+                  - dynamodb:UpdateItem
+                Resource: !GetAtt DynamoDBTable.Arn
+
+  EcsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: cloudxr-proxy
+      Cpu: '512'
+      Memory: '1024'
+      NetworkMode: awsvpc
+      RequiresCompatibilities: [FARGATE]
+      ExecutionRoleArn: !GetAtt EcsTaskExecutionRole.Arn
+      TaskRoleArn: !GetAtt EcsTaskRole.Arn
+      ContainerDefinitions:
+        - Name: proxy
+          Image: !Ref ProxyImage
+          Essential: true
+          PortMappings:
+            - ContainerPort: 8080
+              Protocol: tcp
+          Environment:
+            - Name: PORT
+              Value: '8080'
+            - Name: AWS_REGION
+              Value: !Ref AWS::Region
+            - Name: COGNITO_USER_POOL_ID
+              Value: !Ref CognitoUserPool
+            - Name: COGNITO_APP_CLIENT_ID
+              Value: !Ref CognitoAppClient
+            - Name: DYNAMODB_TABLE
+              Value: !Ref DynamoDBTable
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref ProxyLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: proxy
+
+  EcsService:
+    Type: AWS::ECS::Service
+    DependsOn: ALBListener
+    Properties:
+      ServiceName: cloudxr-proxy
+      Cluster: !Ref EcsCluster
+      TaskDefinition: !Ref EcsTaskDefinition
+      DesiredCount: 0
+      LaunchType: FARGATE
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref RegionSubnet1
+            - !Ref RegionSubnet2
+          SecurityGroups:
+            - !Ref ProxySecurityGroup
+      LoadBalancers:
+        - ContainerName: proxy
+          ContainerPort: 8080
+          TargetGroupArn: !Ref ALBTargetGroup
+
+  ProxyLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: /ecs/cloudxr-proxy
+      RetentionInDays: 14
+
+  # --------------------------------------------------------------------------
+  # DynamoDB (Instance Registry)
+  # --------------------------------------------------------------------------
+  DynamoDBTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: CloudXRInstances
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: instanceId
+          AttributeType: S
+      KeySchema:
+        - AttributeName: instanceId
+          KeyType: HASH
+
+  # --------------------------------------------------------------------------
+  # Cognito (Authentication)
+  # --------------------------------------------------------------------------
+  CognitoUserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: CloudXR-Users
+      AdminCreateUserConfig:
+        AllowAdminCreateUserOnly: true
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+          RequireUppercase: true
+          RequireLowercase: true
+          RequireNumbers: true
+          RequireSymbols: false
+
+  CognitoAppClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: CloudXR-WebClient
+      UserPoolId: !Ref CognitoUserPool
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+      GenerateSecret: false
+
+  # --------------------------------------------------------------------------
+  # GPU Instance IAM Role
+  # --------------------------------------------------------------------------
+  GpuInstanceRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ec2.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub 'arn:${AWS::Partition}:iam::aws:policy/AmazonSSMManagedInstanceCore'
+      Policies:
+        - PolicyName: CloudXRGpuInstancePolicy
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - ec2:DescribeTags
+                Resource: '*'
+              # startup.ps1 only ever PutItems its own registration row. Status
+              # transitions (occupied/available) are the proxy's job, so UpdateItem and
+              # DeleteItem are not granted here.
+              - Effect: Allow
+                Action:
+                  - dynamodb:PutItem
+                Resource: !GetAtt DynamoDBTable.Arn
+              # NOTE: no CloudWatch Logs or S3 read grants. Nothing on a deployed
+              # instance uses them — startup.ps1 logs only to C:\cxr-logs, and both the
+              # driver download and the staging-bucket read happen at AMI *build* time
+              # under the builder's own role. Add them back only if you install a
+              # CloudWatch agent or pull assets at boot.
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                Resource:
+                  - !Sub '${WebClientBucket.Arn}/cloudxr/*'
+
+  GpuInstanceProfile:
+    Type: AWS::IAM::InstanceProfile
+    Properties:
+      Roles:
+        - !Ref GpuInstanceRole
+
+  # --------------------------------------------------------------------------
+  # GPU Launch Template
+  # --------------------------------------------------------------------------
+  GpuLaunchTemplate:
+    Type: AWS::EC2::LaunchTemplate
+    Properties:
+      LaunchTemplateName: cloudxr-gpu
+      LaunchTemplateData:
+        ImageId: !Ref GpuAmiId
+        InstanceType: !Ref GpuInstanceType
+        IamInstanceProfile:
+          Arn: !GetAtt GpuInstanceProfile.Arn
+        SecurityGroupIds:
+          - !Ref GpuSecurityGroup
+        # startup.ps1 already uses IMDSv2, so requiring tokens is safe. Without this,
+        # IMDSv1 stays enabled on an internet-facing host that holds a role.
+        MetadataOptions:
+          HttpEndpoint: enabled
+          HttpTokens: required
+          HttpPutResponseHopLimit: 2
+        BlockDeviceMappings:
+          - DeviceName: /dev/sda1
+            Ebs:
+              VolumeSize: 200
+              VolumeType: gp3
+              DeleteOnTermination: true
+              Encrypted: true
+        TagSpecifications:
+          - ResourceType: instance
+            Tags:
+              - Key: Name
+                Value: CloudXR-GPU-Instance
+
+  # --------------------------------------------------------------------------
+  # Auto Scaling Groups
+  # --------------------------------------------------------------------------
+  WebRTCAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Condition: CreateWebRTCPool
+    Properties:
+      AutoScalingGroupName: cloudxr-webrtc-pool
+      LaunchTemplate:
+        LaunchTemplateId: !Ref GpuLaunchTemplate
+        Version: !GetAtt GpuLaunchTemplate.LatestVersionNumber
+      MinSize: !Ref WebRTCPoolSize
+      MaxSize: !Ref WebRTCPoolSize
+      DesiredCapacity: !Ref WebRTCPoolSize
+      VPCZoneIdentifier:
+        - !Ref GpuSubnet
+      Tags:
+        - Key: Pool
+          Value: webrtc
+          PropagateAtLaunch: true
+
+  NativeAutoScalingGroup:
+    Type: AWS::AutoScaling::AutoScalingGroup
+    Condition: CreateNativePool
+    Properties:
+      AutoScalingGroupName: cloudxr-native-pool
+      LaunchTemplate:
+        LaunchTemplateId: !Ref GpuLaunchTemplate
+        Version: !GetAtt GpuLaunchTemplate.LatestVersionNumber
+      MinSize: !Ref NativePoolSize
+      MaxSize: !Ref NativePoolSize
+      DesiredCapacity: !Ref NativePoolSize
+      VPCZoneIdentifier:
+        - !Ref GpuSubnet
+      Tags:
+        - Key: Pool
+          Value: native
+          PropagateAtLaunch: true
+
+# ============================================================================
+# Outputs
+# ============================================================================
+Outputs:
+  ProxyUrl:
+    Description: CloudXR proxy endpoint for web clients (via CloudFront)
+    Value: !Sub 'https://${DomainName}'
+  NativeSignalingHost:
+    Description: >-
+      Hostname native (Apple) clients connect to. Signaling reaches the ALB directly on TCP
+      48322, bypassing CloudFront, because CloudXRKit compiles that port in and CloudFront
+      serves only 80/443. Enter this value as the Proxy Host in the client.
+    Value: !Sub 'origin.${DomainName}'
+
+  CognitoUserPoolId:
+    Description: Cognito User Pool ID
+    Value: !Ref CognitoUserPool
+
+  CognitoAppClientId:
+    Description: Cognito App Client ID
+    Value: !Ref CognitoAppClient
+
+  DynamoDBTableName:
+    Description: DynamoDB instance registry table name
+    Value: !Ref DynamoDBTable
+
+  VpcId:
+    Description: VPC ID
+    Value: !Ref VPC
+
+  GpuSubnetId:
+    Description: GPU subnet ID
+    Value: !Ref GpuSubnet
+
+  GpuSecurityGroupId:
+    Description: GPU security group ID
+    Value: !Ref GpuSecurityGroup
+
+  WebClientBucketName:
+    Description: S3 bucket for web client static files
+    Value: !Ref WebClientBucket
+
+  CloudFrontDistributionId:
+    Description: CloudFront distribution ID (for cache invalidation)
+    Value: !Ref CloudFrontDistribution
+
+  CloudFrontDomainName:
+    Description: CloudFront distribution domain name
+    Value: !GetAtt CloudFrontDistribution.DomainName

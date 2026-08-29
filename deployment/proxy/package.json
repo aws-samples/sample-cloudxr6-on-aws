@@ -1,0 +1,15 @@
+{
+  "name": "cloudxr-proxy",
+  "version": "3.0.0",
+  "description": "CloudXR 6 signaling proxy — transparent TCP tunnel for WebSocket, HTTP API for session allocation",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@aws-sdk/client-dynamodb": "^3.500.0",
+    "@aws-sdk/lib-dynamodb": "^3.500.0",
+    "jsonwebtoken": "^9.0.2",
+    "jwks-rsa": "^3.1.0"
+  }
+}

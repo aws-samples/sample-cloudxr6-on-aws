@@ -1,0 +1,674 @@
+diff --git a/CloudXRViewer.xcodeproj/project.pbxproj b/CloudXRViewer.xcodeproj/project.pbxproj
+index 54a1ca7..c67c5ea 100644
+--- a/CloudXRViewer.xcodeproj/project.pbxproj
++++ b/CloudXRViewer.xcodeproj/project.pbxproj
+@@ -7,6 +7,7 @@
+ 	objects = {
+ 
+ /* Begin PBXBuildFile section */
++		0127C10B30423B33007C8470 /* CloudXRKit in Frameworks */ = {isa = PBXBuildFile; productRef = 0127C10A30423B33007C8470 /* CloudXRKit */; };
+ 		016548CA2CD53782009F33B0 /* SessionConfigView+extensions.swift in Sources */ = {isa = PBXBuildFile; fileRef = 016548C92CD53782009F33B0 /* SessionConfigView+extensions.swift */; };
+ 		01AFA4562BF7D8C5004B6F6B /* ViewerApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AFA43A2BF7D8C5004B6F6B /* ViewerApp.swift */; };
+ 		01AFA4572BF7D8C5004B6F6B /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 01AFA43B2BF7D8C5004B6F6B /* AppDelegate.swift */; };
+@@ -53,6 +54,8 @@
+ 		FB9895E82E00F1970041368D /* WindowStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB9895E72E00F1970041368D /* WindowStateManager.swift */; };
+ 		FB9895E92E00F1970041368D /* WindowStateManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB9895E72E00F1970041368D /* WindowStateManager.swift */; };
+ 		FBAAC52A2D2FC3E500F2117D /* TestHelper.swift in Sources */ = {isa = PBXBuildFile; fileRef = FBAAC5292D2FC3E500F2117D /* TestHelper.swift */; };
++		CA0DBEEF0000000000000002 /* CloudXRAWSAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0DBEEF0000000000000001 /* CloudXRAWSAuth.swift */; };
++		CA0DBEEF0000000000000003 /* CloudXRAWSAuth.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA0DBEEF0000000000000001 /* CloudXRAWSAuth.swift */; };
+ /* End PBXBuildFile section */
+ 
+ /* Begin PBXContainerItemProxy section */
+@@ -100,6 +103,7 @@
+ 		DAB674CA2E1D5B73003DB343 /* CloudXRViewer-visionOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "CloudXRViewer-visionOS.entitlements"; sourceTree = "<group>"; };
+ 		FB9895E72E00F1970041368D /* WindowStateManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WindowStateManager.swift; sourceTree = "<group>"; };
+ 		FBAAC5292D2FC3E500F2117D /* TestHelper.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TestHelper.swift; sourceTree = "<group>"; };
++		CA0DBEEF0000000000000001 /* CloudXRAWSAuth.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CloudXRAWSAuth.swift; sourceTree = "<group>"; };
+ /* End PBXFileReference section */
+ 
+ /* Begin PBXFrameworksBuildPhase section */
+@@ -123,6 +127,7 @@
+ 			buildActionMask = 2147483647;
+ 			files = (
+ 				01C927EC2CB9BF64006D4D8D /* CloudXRKit in Frameworks */,
++				0127C10B30423B33007C8470 /* CloudXRKit in Frameworks */,
+ 			);
+ 			runOnlyForDeploymentPostprocessing = 0;
+ 		};
+@@ -185,6 +190,7 @@
+ 				5573C5342DA6DC6000C7003B /* ServerActionsView.swift */,
+ 				01AFA4412BF7D8C5004B6F6B /* SessionConfigView.swift */,
+ 				016548C92CD53782009F33B0 /* SessionConfigView+extensions.swift */,
++				CA0DBEEF0000000000000001 /* CloudXRAWSAuth.swift */,
+ 				868218DB2E2EF4FF005ED313 /* GuestMode.swift */,
+ 				A725B02F2C6EC005000248FE /* StarRatingView.swift */,
+ 				01AFA44D2BF7D8C5004B6F6B /* UIConstants.swift */,
+@@ -265,6 +271,7 @@
+ 			name = "CloudXRViewer-visionOS";
+ 			packageProductDependencies = (
+ 				01C927EB2CB9BF64006D4D8D /* CloudXRKit */,
++				0127C10A30423B33007C8470 /* CloudXRKit */,
+ 			);
+ 			productName = CloudXRViewer;
+ 			productReference = 55D382202E99B922009D89EB /* CloudXRViewer.app */;
+@@ -298,6 +305,9 @@
+ 				Base,
+ 			);
+ 			mainGroup = EAA206412B16737300B5867E;
++			packageReferences = (
++				0127C10930423B33007C8470 /* XCRemoteSwiftPackageReference "cloudxr-framework" */,
++			);
+ 			productRefGroup = EAA206412B16737300B5867E;
+ 			projectDirPath = "";
+ 			projectRoot = "";
+@@ -352,6 +362,7 @@
+ 			isa = PBXSourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				CA0DBEEF0000000000000003 /* CloudXRAWSAuth.swift in Sources */,
+ 				5573C23E2DA3BA6100C7003B /* AppModel.swift in Sources */,
+ 				9CAEE0C72D307CF90030E3F6 /* AppDelegate.swift in Sources */,
+ 				9CC51E192D308742003A1CF0 /* Color+hex.swift in Sources */,
+@@ -376,6 +387,7 @@
+ 			isa = PBXSourcesBuildPhase;
+ 			buildActionMask = 2147483647;
+ 			files = (
++				CA0DBEEF0000000000000002 /* CloudXRAWSAuth.swift in Sources */,
+ 				9CC51E182D308742003A1CF0 /* Color+hex.swift in Sources */,
+ 				55629C9B2E99B4FE00B85E5B /* ImmersiveView.swift in Sources */,
+ 				55629C9C2E99B4FE00B85E5B /* WindowUI.swift in Sources */,
+@@ -862,7 +874,7 @@
+ 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+ 				CLANG_WARN_UNREACHABLE_CODE = YES;
+ 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+-				CODE_SIGN_ENTITLEMENTS = "CloudXRViewer/visionOS/CloudXRViewer-visionOS.entitlements";
++				CODE_SIGN_ENTITLEMENTS = "";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				COPY_PHASE_STRIP = NO;
+ 				CURRENT_PROJECT_VERSION = 1;
+@@ -959,7 +971,7 @@
+ 				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+ 				CLANG_WARN_UNREACHABLE_CODE = YES;
+ 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+-				CODE_SIGN_ENTITLEMENTS = "CloudXRViewer/visionOS/CloudXRViewer-visionOS.entitlements";
++				CODE_SIGN_ENTITLEMENTS = "";
+ 				CODE_SIGN_STYLE = Automatic;
+ 				COPY_PHASE_STRIP = NO;
+ 				CURRENT_PROJECT_VERSION = 1;
+@@ -1054,7 +1066,23 @@
+ 		};
+ /* End XCConfigurationList section */
+ 
++/* Begin XCRemoteSwiftPackageReference section */
++		0127C10930423B33007C8470 /* XCRemoteSwiftPackageReference "cloudxr-framework" */ = {
++			isa = XCRemoteSwiftPackageReference;
++			repositoryURL = "https://github.com/NVIDIA/cloudxr-framework";
++			requirement = {
++				kind = upToNextMajorVersion;
++				minimumVersion = 6.2.0;
++			};
++		};
++/* End XCRemoteSwiftPackageReference section */
++
+ /* Begin XCSwiftPackageProductDependency section */
++		0127C10A30423B33007C8470 /* CloudXRKit */ = {
++			isa = XCSwiftPackageProductDependency;
++			package = 0127C10930423B33007C8470 /* XCRemoteSwiftPackageReference "cloudxr-framework" */;
++			productName = CloudXRKit;
++		};
+ 		01C927EB2CB9BF64006D4D8D /* CloudXRKit */ = {
+ 			isa = XCSwiftPackageProductDependency;
+ 			productName = CloudXRKit;
+diff --git a/CloudXRViewer/Common/CloudXRAWSAuth.swift b/CloudXRViewer/Common/CloudXRAWSAuth.swift
+new file mode 100644
+index 0000000..72fcc0c
+--- /dev/null
++++ b/CloudXRViewer/Common/CloudXRAWSAuth.swift
+@@ -0,0 +1,316 @@
++// Permission is hereby granted, free of charge, to any person obtaining a copy
++// of this software and associated documentation files (the "Software"), to deal
++// in the Software without restriction, including without limitation the rights
++// to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
++// copies of the Software, and to permit persons to whom the Software is furnished
++// to do so, subject to the following conditions:
++//
++// The above copyright notice and this permission notice (including the next
++// paragraph) shall be included in all copies or substantial portions of the
++// Software.
++//
++// THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
++// IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY, FITNESS
++// FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE AUTHORS
++// OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY,
++// WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF
++// OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
++//
++// Copyright (c) 2008-2025 NVIDIA Corporation. All rights reserved.
++
++//
++// CLOUDXR-AWS: entire file added.
++//
++// Obtains a Cognito ID token for the self-hosted CloudXR-on-AWS proxy, so the operator no
++// longer has to mint a JWT out of band and paste it into the app. The token is presented on
++// the signaling upgrade as `Authorization: Bearer <idToken>`; the proxy verifies it and never
++// issues tokens itself, so nothing server-side changes to support this.
++//
++// Deliberately has no AWS SDK dependency. The app client has no client secret, so
++// `InitiateAuth` needs neither SigV4 signing nor a SECRET_HASH — it is a plain unsigned
++// HTTPS POST that URLSession can make directly.
++//
++// The refresh token is kept in the Keychain, not in UserDefaults: `@AppStorage` writes
++// plaintext into the preferences plist, and that store also proved unreliable to reason about
++// (the simulator's cfprefsd serves a cached copy that survives direct plist edits). The
++// password is never persisted anywhere.
++//
++
++import Foundation
++import Security
++import OSLog
++
++/// CLOUDXR-AWS: deployment-specific defaults, so a fresh install needs only credentials.
++///
++/// This is the single place to change when pointing the viewer at a different CloudXR-on-AWS
++/// deployment. `setup-avp-client.sh --domain <your-domain>` rewrites it for you; edit it here if
++/// you are wiring the project up by hand.
++enum CloudXRAWSDefaults {
++    /// Hostname that terminates native signaling. This is the ALB (`origin.<domain>`), not the
++    /// CloudFront apex, because CloudXRKit compiles the signaling port in as 48322 and CloudFront
++    /// serves viewer traffic only on 80/443. `CloudXRAWSAuth` derives the apex from this name to
++    /// locate `config.json`, which CloudFront does serve.
++    ///
++    /// Matches the `NativeSignalingHost` output of the CloudFormation stack.
++    static let signalingHost = "origin.cloudxr.example.com"
++}
++
++/// Failure modes of the CloudXR-on-AWS sign-in path, phrased for display in the config UI.
++enum CloudXRAWSAuthError: LocalizedError {
++    case configUnavailable(tried: String, underlying: String)
++    case missingCredentials
++    case invalidCredentials
++    case challengeRequired(String)
++    case malformedResponse
++    case service(type: String, message: String)
++
++    var errorDescription: String? {
++        switch self {
++        case .configUnavailable(let tried, let underlying):
++            return "Couldn't load deployment config (tried \(tried)): \(underlying)"
++        case .missingCredentials:
++            return "Enter a username and password."
++        case .invalidCredentials:
++            return "Incorrect username or password."
++        case .challengeRequired(let name):
++            return "Sign-in needs an additional step this app doesn't handle yet (\(name))."
++        case .malformedResponse:
++            return "Unexpected response from Cognito."
++        case .service(let type, let message):
++            return "Cognito error \(type): \(message)"
++        }
++    }
++}
++
++/// The subset of `/config.json` this app needs. Written by `deploy.sh` at deploy time and
++/// served from S3 via CloudFront — the same file the web client reads before its own login.
++private struct CloudXRAWSDeploymentConfig: Decodable {
++    let region: String
++    let userPoolId: String
++    let clientId: String
++    let apiEndpoint: String
++}
++
++struct CloudXRAWSAuth {
++
++    private static let logger = Logger(
++        subsystem: Bundle.main.bundleIdentifier ?? "com.nvidia.cloudxr-viewer",
++        category: "CloudXRAWSAuth"
++    )
++
++    private static let keychainService = "com.nvidia.cloudxr-viewer.cloudxr-aws"
++    private static let refreshTokenAccount = "cognitoRefreshToken"
++
++    // MARK: - Public surface
++
++    /// True when a refresh token is stored, meaning sign-in can proceed without a password.
++    static var hasStoredSession: Bool {
++        readRefreshToken() != nil
++    }
++
++    /// Discards the stored refresh token, forcing a full password sign-in next time.
++    static func signOut() {
++        deleteRefreshToken()
++        logger.info("Cleared stored CloudXR-on-AWS session")
++    }
++
++    /// Returns a Cognito ID token suitable for the signaling `Authorization` header.
++    ///
++    /// Prefers a silent refresh when a refresh token is stored, and falls back to a
++    /// username/password exchange. On a successful password exchange the refresh token is
++    /// stored so subsequent connects need no password.
++    ///
++    /// - Parameter signalingHost: the proxy host entered in the UI. Used to locate the
++    ///   deployment's `config.json`; see `loadConfig(signalingHost:)`.
++    static func idToken(
++        signalingHost: String,
++        username: String,
++        password: String
++    ) async throws -> String {
++        let config = try await loadConfig(signalingHost: signalingHost)
++
++        if let stored = readRefreshToken() {
++            do {
++                let response = try await initiateAuth(region: config.region, payload: [
++                    "AuthFlow": "REFRESH_TOKEN_AUTH",
++                    "ClientId": config.clientId,
++                    "AuthParameters": ["REFRESH_TOKEN": stored]
++                ])
++                let tokens = try extractTokens(from: response)
++                logger.info("Signed in via stored refresh token")
++                return tokens.idToken
++            } catch {
++                // A refresh token can be revoked or aged out (30 days by default). Drop it and
++                // fall through to the password path rather than failing the whole connect.
++                logger.warning("Refresh token rejected, falling back to password: \(error.localizedDescription, privacy: .public)")
++                deleteRefreshToken()
++            }
++        }
++
++        let user = username.trimmingCharacters(in: .whitespacesAndNewlines)
++        guard !user.isEmpty, !password.isEmpty else {
++            throw CloudXRAWSAuthError.missingCredentials
++        }
++
++        let response = try await initiateAuth(region: config.region, payload: [
++            "AuthFlow": "USER_PASSWORD_AUTH",
++            "ClientId": config.clientId,
++            "AuthParameters": ["USERNAME": user, "PASSWORD": password]
++        ])
++        let tokens = try extractTokens(from: response)
++
++        if let refresh = tokens.refreshToken {
++            storeRefreshToken(refresh)
++            logger.info("Signed in with password; refresh token stored")
++        } else {
++            logger.info("Signed in with password; no refresh token returned")
++        }
++        return tokens.idToken
++    }
++
++    // MARK: - Deployment config
++
++    /// Fetches `config.json` for the deployment.
++    ///
++    /// The file is intentionally *not* in the proxy container image — `.dockerignore` excludes
++    /// it so Cognito IDs are not baked into a build, and `deploy.sh` uploads it to S3 where
++    /// CloudFront serves it from the apex domain. The signaling host, by contrast, is the ALB
++    /// (`origin.<domain>`), because the native client's hardcoded 48322 cannot traverse
++    /// CloudFront. So the apex is tried first by dropping a leading `origin.` label, then the
++    /// signaling host itself as a fallback for topologies that serve both from one name.
++    private static func loadConfig(signalingHost: String) async throws -> CloudXRAWSDeploymentConfig {
++        var candidates: [String] = []
++        let originPrefix = "origin."
++        if signalingHost.hasPrefix(originPrefix) {
++            candidates.append(String(signalingHost.dropFirst(originPrefix.count)))
++        }
++        candidates.append(signalingHost)
++
++        var lastError = "no reachable host"
++        for host in candidates {
++            guard let url = URL(string: "https://\(host)/config.json") else { continue }
++            do {
++                let (data, response) = try await URLSession.shared.data(from: url)
++                guard let http = response as? HTTPURLResponse else {
++                    lastError = "\(host): no HTTP response"
++                    continue
++                }
++                guard http.statusCode == 200 else {
++                    lastError = "\(host): HTTP \(http.statusCode)"
++                    continue
++                }
++                let config = try JSONDecoder().decode(CloudXRAWSDeploymentConfig.self, from: data)
++                logger.info("Loaded deployment config from \(host, privacy: .public) (region \(config.region, privacy: .public))")
++                return config
++            } catch {
++                lastError = "\(host): \(error.localizedDescription)"
++            }
++        }
++        throw CloudXRAWSAuthError.configUnavailable(
++            tried: candidates.joined(separator: ", "),
++            underlying: lastError
++        )
++    }
++
++    // MARK: - Cognito
++
++    /// Unsigned `InitiateAuth` call against the regional Cognito IDP endpoint.
++    private static func initiateAuth(
++        region: String,
++        payload: [String: Any]
++    ) async throws -> [String: Any] {
++        guard let url = URL(string: "https://cognito-idp.\(region).amazonaws.com/") else {
++            throw CloudXRAWSAuthError.malformedResponse
++        }
++
++        var request = URLRequest(url: url)
++        request.httpMethod = "POST"
++        request.setValue("application/x-amz-json-1.1", forHTTPHeaderField: "Content-Type")
++        request.setValue(
++            "AWSCognitoIdentityProviderService.InitiateAuth",
++            forHTTPHeaderField: "X-Amz-Target"
++        )
++        request.httpBody = try JSONSerialization.data(withJSONObject: payload)
++
++        let (data, response) = try await URLSession.shared.data(for: request)
++
++        guard let http = response as? HTTPURLResponse,
++              let json = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else {
++            throw CloudXRAWSAuthError.malformedResponse
++        }
++
++        guard http.statusCode == 200 else {
++            let type = (json["__type"] as? String) ?? "Unknown"
++            let message = (json["message"] as? String) ?? (json["Message"] as? String) ?? "no message"
++            if type.contains("NotAuthorized") || type.contains("UserNotFound") {
++                throw CloudXRAWSAuthError.invalidCredentials
++            }
++            throw CloudXRAWSAuthError.service(type: type, message: message)
++        }
++
++        return json
++    }
++
++    private static func extractTokens(
++        from json: [String: Any]
++    ) throws -> (idToken: String, refreshToken: String?) {
++        // MFA or a forced password change comes back as a challenge instead of tokens. Nothing
++        // in the current pool enables one, but fail clearly rather than crash if that changes.
++        if let challenge = json["ChallengeName"] as? String {
++            throw CloudXRAWSAuthError.challengeRequired(challenge)
++        }
++        guard let result = json["AuthenticationResult"] as? [String: Any],
++              let idToken = result["IdToken"] as? String else {
++            throw CloudXRAWSAuthError.malformedResponse
++        }
++        // REFRESH_TOKEN_AUTH reuses the existing refresh token and returns none.
++        return (idToken, result["RefreshToken"] as? String)
++    }
++
++    // MARK: - Keychain
++
++    private static func baseQuery() -> [String: Any] {
++        [
++            kSecClass as String: kSecClassGenericPassword,
++            kSecAttrService as String: keychainService,
++            kSecAttrAccount as String: refreshTokenAccount
++        ]
++    }
++
++    private static func storeRefreshToken(_ token: String) {
++        guard let data = token.data(using: .utf8) else { return }
++        SecItemDelete(baseQuery() as CFDictionary)
++
++        var attributes = baseQuery()
++        attributes[kSecValueData as String] = data
++        attributes[kSecAttrAccessible as String] = kSecAttrAccessibleAfterFirstUnlock
++
++        let status = SecItemAdd(attributes as CFDictionary, nil)
++        if status != errSecSuccess {
++            logger.error("Keychain write failed with status \(status)")
++        }
++    }
++
++    private static func readRefreshToken() -> String? {
++        var query = baseQuery()
++        query[kSecReturnData as String] = true
++        query[kSecMatchLimit as String] = kSecMatchLimitOne
++
++        var item: CFTypeRef?
++        let status = SecItemCopyMatching(query as CFDictionary, &item)
++        guard status == errSecSuccess,
++              let data = item as? Data,
++              let token = String(data: data, encoding: .utf8),
++              !token.isEmpty else {
++            return nil
++        }
++        return token
++    }
++
++    private static func deleteRefreshToken() {
++        let status = SecItemDelete(baseQuery() as CFDictionary)
++        if status != errSecSuccess && status != errSecItemNotFound {
++            logger.error("Keychain delete failed with status \(status)")
++        }
++    }
++}
+diff --git a/CloudXRViewer/Common/SessionConfigView+extensions.swift b/CloudXRViewer/Common/SessionConfigView+extensions.swift
+index e1c22ac..d9b0a9b 100644
+--- a/CloudXRViewer/Common/SessionConfigView+extensions.swift
++++ b/CloudXRViewer/Common/SessionConfigView+extensions.swift
+@@ -34,6 +34,9 @@ enum Zone: String, CaseIterable {
+     case us_west = "US West"
+     case eu_north = "EU North"
+     case ipAddress = "Manual IP address"
++    // CLOUDXR-AWS: added. Connects through a self-hosted signaling proxy over WSS using
++    // a bearer token, rather than to NVIDIA GDN or a direct server IP.
++    case cloudxrAwsProxy = "CloudXR on AWS proxy"
+ 
+     var id: String? {
+         switch self {
+@@ -102,7 +105,10 @@ extension SessionConfigView {
+     }
+ 
+     var usingGuestMode: Bool {
+-        authMethod == .guest && zone != .ipAddress
++        // CLOUDXR-AWS: added `&& zone != .cloudxrAwsProxy`. Without it, selecting the proxy
++        // zone while authMethod is .guest would open the GDN guest-auth popover and hijack
++        // the connect flow, since guest mode was only ever gated against .ipAddress.
++        authMethod == .guest && zone != .ipAddress && zone != .cloudxrAwsProxy
+     }
+ 
+     var connectButtonDisabled: Bool {
+diff --git a/CloudXRViewer/Common/SessionConfigView.swift b/CloudXRViewer/Common/SessionConfigView.swift
+index 3fca1a4..bb4ae04 100644
+--- a/CloudXRViewer/Common/SessionConfigView.swift
++++ b/CloudXRViewer/Common/SessionConfigView.swift
+@@ -23,13 +23,30 @@ import CloudXRKit
+ import OSLog
+ 
+ struct SessionConfigView: View {
+-    @AppStorage("hostAddress") var hostAddress: String = ""
+-    @AppStorage("zone") private(set) var zone: Zone = .us_west
++    // CLOUDXR-AWS: defaulted to the deployment's signaling host so a fresh install is ready to
++    // connect with only credentials entered. Note this field is shared with the `.ipAddress`
++    // zone by upstream design, so that path now opens with a hostname prefilled; clear it there.
++    @AppStorage("hostAddress") var hostAddress: String = CloudXRAWSDefaults.signalingHost
++    // CLOUDXR-AWS: replaced a hand-pasted `bearerToken` field with a Cognito sign-in. The app
++    // now fetches its own ID token (see CloudXRAWSAuth), which removes the hourly paste and the
++    // `jwt expired` failure mode. Only the username is persisted; the password lives in
++    // @State and is cleared after use, and the refresh token goes to the Keychain.
++    @AppStorage("cognitoUsername") var cognitoUsername: String = ""
++    @State var cognitoPassword: String = ""
++    @State var awsAuthError: String?
++    @State var hasStoredAWSSession: Bool = CloudXRAWSAuth.hasStoredSession
++    // CLOUDXR-AWS: default changed from `.us_west` (a GDN zone) to the proxy zone, since this
++    // fork exists to talk to our deployment rather than to GDN.
++    @AppStorage("zone") private(set) var zone: Zone = .cloudxrAwsProxy
+     @AppStorage("authMethod") private(set) var authMethod: AuthMethod = .starfleet
+     @AppStorage("resolutionPreset") var resolutionPreset: ResolutionPreset = .standardPreset
+ 
+ #if os(visionOS)
+-    @AppStorage("enableHandTracking") var enableHandTracking: Bool = false
++    // CLOUDXR-AWS: default changed from `false` to `true`. In the simulator this resolves to
++    // `.simulated`, which synthesizes hand poses — they drift on their own, which demos well
++    // and exercises the upstream pose path. On device the same toggle resolves to `.prediction`
++    // and tracks real hands, so on-by-default is the right behaviour for both.
++    @AppStorage("enableHandTracking") var enableHandTracking: Bool = true
+ #endif
+ 
+     @AppStorage("genericAppID") var genericAppID: Int = 0
+@@ -210,7 +227,27 @@ struct SessionConfigView: View {
+ 
+         var appID: UInt = 0
+ 
+-        if zone != .ipAddress {
++        // CLOUDXR-AWS: the visionOS software keyboard appends a trailing space when pasting
++        // into a TextField, which produced a hostname of "example.com " — URL construction then
++        // fails and no connection is ever attempted. Trim before use.
++        let trimmedHost = hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
++
++        // CLOUDXR-AWS: restructured from a two-way (GDN / direct-IP) branch into three ways
++        // so a self-hosted proxy can be selected. The original `if zone != .ipAddress`
++        // treated every non-IP zone as GDN and returned early when no appID was configured,
++        // so simply adding a Zone case would have silently failed to connect.
++        switch zone {
++        case .cloudxrAwsProxy:
++            // CLOUDXR-AWS: the connection type is assembled in the Task below rather than here,
++            // because the bearer token is now fetched from Cognito asynchronously. This mirrors
++            // how guest mode defers its own connection type until `getGuestAuth` resolves.
++            break
++
++        case .ipAddress:
++            // CLOUDXR-AWS: trimmed for the same reason as above.
++            cxrConfig.connectionType = .local(ip: trimmedHost)
++
++        default:
+             if application.appID != .unknown {
+                 appID = application.appID.rawValue
+             } else if genericAppID > 0 {
+@@ -227,8 +264,6 @@ struct SessionConfigView: View {
+                     zone: zone.id
+                 )
+             }
+-        } else {
+-            cxrConfig.connectionType = .local(ip: hostAddress)
+         }
+ 
+         if appModel.session == nil {
+@@ -236,6 +271,50 @@ struct SessionConfigView: View {
+         }
+ 
+         Task { @MainActor in
++            // CLOUDXR-AWS: acquire the Cognito ID token before connecting. Errors are surfaced
++            // in the form and abort the connect, rather than propagating out of this detached
++            // Task where nothing would observe them.
++            if zone == .cloudxrAwsProxy {
++                do {
++                    let idToken = try await CloudXRAWSAuth.idToken(
++                        signalingHost: trimmedHost,
++                        username: cognitoUsername,
++                        password: cognitoPassword
++                    )
++
++                    cognitoPassword = ""
++                    hasStoredAWSSession = CloudXRAWSAuth.hasStoredSession
++                    awsAuthError = nil
++
++                    // Signaling runs over WSS to the proxy hostname, which terminates TLS with a
++                    // CA-signed certificate. The proxy authenticates the upgrade from these
++                    // headers and picks a backend GPU instance itself, so no server IP or port
++                    // is supplied here. Media is negotiated separately via ICE.
++                    cxrConfig.connectionType = .remoteSecure(
++                        host: trimmedHost,
++                        signalingHeaders: [
++                            "Authorization": "Bearer \(idToken)",
++                            "x-cloudxr-device-type": "native"
++                        ],
++                        certificateValidationHandler: { challenge in
++                            guard let serverTrust = challenge.protectionSpace.serverTrust else {
++                                return (.cancelAuthenticationChallenge, nil)
++                            }
++                            var error: CFError?
++                            if SecTrustEvaluateWithError(serverTrust, &error) {
++                                return (.useCredential, URLCredential(trust: serverTrust))
++                            } else {
++                                return (.cancelAuthenticationChallenge, nil)
++                            }
++                        }
++                    )
++                } catch {
++                    awsAuthError = error.localizedDescription
++                    Self.logger.error("CloudXR-on-AWS sign-in failed: \(error.localizedDescription, privacy: .public)")
++                    return
++                }
++            }
++
+             if usingGuestMode {
+                 let guestAuth = try await guestModeComponent.getGuestAuth(appID: appID)
+ 
+diff --git a/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift b/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
+index 5cb891b..665135f 100644
+--- a/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
++++ b/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
+@@ -69,6 +69,62 @@ extension SessionConfigView {
+                                 hostAddress = hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
+                             }
+                     }
++                } else if zone == .cloudxrAwsProxy {
++                    // CLOUDXR-AWS: added. Proxy hostname plus Cognito credentials. The app
++                    // exchanges these for an ID token itself (see CloudXRAWSAuth) instead of
++                    // taking a hand-pasted JWT. Reuses `hostAddress` for the host so the field
++                    // is shared with the direct-IP path.
++                    HStack {
++                        Text("Proxy Host")
++                        Spacer()
++                        TextField("cloudxr.example.com", text: $hostAddress)
++                            .autocapitalization(.none)
++                            .multilineTextAlignment(.trailing)
++                            .autocorrectionDisabled(true)
++                            .textInputAutocapitalization(.never)
++                            .onSubmit {
++                                hostAddress = hostAddress.trimmingCharacters(in: .whitespacesAndNewlines)
++                            }
++                    }
++                    HStack {
++                        Text("Username")
++                        Spacer()
++                        TextField("demo", text: $cognitoUsername)
++                            .autocapitalization(.none)
++                            .multilineTextAlignment(.trailing)
++                            .autocorrectionDisabled(true)
++                            .textInputAutocapitalization(.never)
++                            .onSubmit {
++                                cognitoUsername = cognitoUsername.trimmingCharacters(in: .whitespacesAndNewlines)
++                            }
++                    }
++                    HStack {
++                        Text("Password")
++                        Spacer()
++                        SecureField(
++                            hasStoredAWSSession ? "using saved sign-in" : "password",
++                            text: $cognitoPassword
++                        )
++                        .multilineTextAlignment(.trailing)
++                        .autocorrectionDisabled(true)
++                        .textInputAutocapitalization(.never)
++                    }
++                    if hasStoredAWSSession {
++                        HStack {
++                            Spacer()
++                            Button("Forget saved sign-in") {
++                                CloudXRAWSAuth.signOut()
++                                hasStoredAWSSession = false
++                            }
++                            .font(.caption)
++                        }
++                    }
++                    if let awsAuthError {
++                        Text(awsAuthError)
++                            .font(.caption)
++                            .foregroundStyle(.red)
++                            .fixedSize(horizontal: false, vertical: true)
++                    }
+                 } else {
+                     HStack {
+                         Picker("Select Authentication Method", selection: $authMethod) {
+@@ -83,7 +139,9 @@ extension SessionConfigView {
+                     Toggle("Enable Hand Tracking", isOn: $enableHandTracking)
+                 }
+ 
+-                if zone != .ipAddress && application.appID == .unknown {
++                // CLOUDXR-AWS: added `&& zone != .cloudxrAwsProxy`. The Application ID is a GDN
++                // concept and is unused on the proxy path; showing it there is misleading.
++                if zone != .ipAddress && zone != .cloudxrAwsProxy && application.appID == .unknown {
+                     HStack {
+                         Text("Enter Application ID")
+                         Spacer()

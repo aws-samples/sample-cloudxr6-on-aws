@@ -1,0 +1,190 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CloudXR Streaming</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #1a1a2e; color: #fff; min-height: 100vh; display: flex; align-items: center; justify-content: center; }
+    .container { background: #2d2d44; padding: 2rem; border-radius: 12px; width: 90%; max-width: 400px; }
+    h1 { font-size: 1.4rem; margin-bottom: 0.5rem; color: #76b900; }
+    p { font-size: 0.9rem; color: #aaa; margin-bottom: 1.5rem; }
+    label { display: block; font-size: 0.85rem; color: #ccc; margin-bottom: 0.3rem; }
+    input { width: 100%; padding: 0.7rem; border: 1px solid #444; border-radius: 6px; background: #1a1a2e; color: #fff; font-size: 1rem; margin-bottom: 1rem; }
+    input:focus { outline: none; border-color: #76b900; }
+    button { width: 100%; padding: 0.8rem; border: none; border-radius: 6px; background: #76b900; color: #1a1a2e; font-size: 1rem; font-weight: bold; cursor: pointer; }
+    button:hover { background: #8dd600; }
+    button:disabled { background: #444; color: #888; cursor: not-allowed; }
+    .error { color: #ff6b6b; font-size: 0.85rem; margin-bottom: 1rem; display: none; }
+    .status { color: #76b900; font-size: 0.85rem; margin-top: 1rem; display: none; }
+    #streaming-ui { display: none; text-align: center; }
+    #streaming-ui h2 { margin-bottom: 1rem; }
+    #streaming-ui button { margin-top: 1rem; }
+    select { width: 100%; padding: 0.7rem; border: 1px solid #444; border-radius: 6px; background: #1a1a2e; color: #fff; font-size: 1rem; margin-bottom: 1rem; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <!-- Login Form -->
+    <div id="login-form">
+      <h1>CloudXR Streaming</h1>
+      <p>Sign in to connect to a GPU streaming instance.</p>
+      <div class="error" id="error-msg"></div>
+      <label for="username">Username</label>
+      <input type="text" id="username" autocomplete="username" />
+      <label for="password">Password</label>
+      <input type="password" id="password" autocomplete="current-password" />
+      <button id="login-btn" onclick="login()">Sign In</button>
+      <div class="status" id="status-msg"></div>
+    </div>
+
+    <!-- Streaming UI (shown after login) -->
+    <div id="streaming-ui">
+      <h2>Ready to Stream</h2>
+      <p>Connected as <span id="user-display"></span></p>
+      <label for="immersive-mode">Immersive Mode</label>
+      <select id="immersive-mode">
+        <option value="vr">VR Immersive</option>
+      </select>
+      <button onclick="startStreaming()">Connect to VR</button>
+      <div class="status" id="stream-status"></div>
+    </div>
+  </div>
+
+  <script>
+    // All Cognito settings come from /config.json, written by deploy.sh at deploy time.
+    // They are read from window.__CLOUDXR_CONFIG__ at point of use rather than captured
+    // here, because this script runs before loadConfig() resolves.
+    let authToken = null;
+    let configReady = null;
+
+    // Fetch client config from proxy
+    async function loadConfig() {
+      try {
+        const res = await fetch('/config.json');
+        if (res.ok) {
+          const config = await res.json();
+          window.__CLOUDXR_CONFIG__ = config;
+        }
+      } catch (e) {
+        console.warn('Could not load config from proxy:', e);
+      }
+    }
+
+    async function login() {
+      await configReady;   // ensure Cognito IDs are loaded before authenticating
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+      const errorEl = document.getElementById('error-msg');
+      const statusEl = document.getElementById('status-msg');
+      const btn = document.getElementById('login-btn');
+
+      errorEl.style.display = 'none';
+      statusEl.style.display = 'block';
+      statusEl.textContent = 'Signing in...';
+      btn.disabled = true;
+
+      try {
+        const config = window.__CLOUDXR_CONFIG__ || {};
+        const response = await fetch(`https://cognito-idp.${config.region}.amazonaws.com/`, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/x-amz-json-1.1',
+            'X-Amz-Target': 'AWSCognitoIdentityProviderService.InitiateAuth',
+          },
+          body: JSON.stringify({
+            AuthFlow: 'USER_PASSWORD_AUTH',
+            ClientId: config.clientId,
+            AuthParameters: {
+              USERNAME: username,
+              PASSWORD: password,
+            },
+          }),
+        });
+
+        const data = await response.json();
+
+        if (data.AuthenticationResult) {
+          authToken = data.AuthenticationResult.IdToken;
+
+          // Hand the token to the signaling upgrade. The CloudXR.js client opens the
+          // WSS connection itself, so we cannot attach an Authorization header to it —
+          // a same-origin cookie is the one credential the browser will send along
+          // automatically. The proxy validates it before allocating a GPU instance.
+          // Session cookie (no Expires) so it dies with the browser session; SameSite=Lax
+          // still applies on the same-origin WSS upgrade.
+          document.cookie = 'cxr_token=' + encodeURIComponent(authToken) +
+            '; Path=/; Secure; SameSite=Lax';
+
+          document.getElementById('login-form').style.display = 'none';
+          document.getElementById('streaming-ui').style.display = 'block';
+          document.getElementById('user-display').textContent = username;
+        } else if (data.__type && data.__type.includes('NotAuthorizedException')) {
+          throw new Error('Invalid username or password');
+        } else {
+          throw new Error(data.message || 'Authentication failed');
+        }
+      } catch (err) {
+        errorEl.textContent = err.message;
+        errorEl.style.display = 'block';
+        statusEl.style.display = 'none';
+      } finally {
+        btn.disabled = false;
+      }
+    }
+
+    async function startStreaming() {
+      const streamStatus = document.getElementById('stream-status');
+      streamStatus.style.display = 'block';
+      streamStatus.textContent = 'Allocating GPU instance...';
+
+      try {
+        // Call session API to get GPU instance details
+        const config = window.__CLOUDXR_CONFIG__ || {};
+        const response = await fetch('/api/session', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: authToken, deviceType: 'webrtc' })
+        });
+
+        if (!response.ok) {
+          const err = await response.json();
+          throw new Error(err.message || 'Session allocation failed');
+        }
+
+        const session = await response.json();
+        streamStatus.textContent = `GPU instance allocated (${session.instanceId}). Launching CloudXR client...`;
+
+        // Redirect to CloudXR.js React sample with the proxy URL.
+        // Media is negotiated by ICE, so no media address/port is passed.
+        const params = new URLSearchParams({
+          proxyUrl: `https://${window.location.host}`,
+        });
+        
+        // Short delay so user sees the status message
+        setTimeout(() => {
+          window.location.href = `/cloudxr/index.html?${params.toString()}`;
+        }, 1000);
+
+      } catch (err) {
+        streamStatus.textContent = `Error: ${err.message}`;
+        streamStatus.style.color = '#ff6b6b';
+      }
+    }
+
+    // Kick off the config load immediately and keep the promise so an early submit
+    // awaits it instead of racing it. Without this, submitting before /config.json
+    // resolves hits cognito-idp.undefined.amazonaws.com — most likely on a cold
+    // CloudFront edge, i.e. the very first user after a deploy.
+    configReady = loadConfig();
+
+    // Allow Enter key to submit
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && document.getElementById('login-form').style.display !== 'none') {
+        login();
+      }
+    });
+  </script>
+</body>
+</html>

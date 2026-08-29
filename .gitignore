@@ -1,0 +1,9 @@
+# Workspace-only files (not part of the repo)
+.kiro/
+.vscode/
+local/
+
+# Build artifacts generated at deploy time
+deployment/proxy/public/cloudxr/
+deployment/proxy/public/config.json
+node_modules/

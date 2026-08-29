@@ -1,4 +1,5 @@
 # Workspace-only files (not part of the repo)
+.DS_Store
 .kiro/
 .vscode/
 local/

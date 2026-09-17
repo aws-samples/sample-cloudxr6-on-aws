@@ -43,6 +43,16 @@ The full architecture design document begins with an overview of the two primary
 - [NVIDIA CloudXR Apple Generic Viewer](https://github.com/NVIDIA/cloudxr-apple-generic-viewer) (pinned to commit `3c8653a`; fetched and patched by `deployment/avp-client/setup-avp-client.sh`, not vendored here — see [avp-client-guide.md](deployment/avp-client-guide.md))
 - [NVIDIA CloudXR Release Notes](https://docs.nvidia.com/cloudxr-sdk/release/6/release_notes/release_notes.html)
 
+## Third-Party Services
+
+Deploying this architecture requires software and services from parties other than AWS. Review their terms before proceeding, and note that AWS charges for the resources this deploys are separate and additional.
+
+**NVIDIA CloudXR.** The CloudXR Runtime, CloudXR.js and CloudXR Framework are NVIDIA software, downloaded from [NVIDIA NGC](https://catalog.ngc.nvidia.com/) during the AMI build and, for the Apple client, resolved as a Swift package. They are not distributed in this repository. Your use is governed by NVIDIA's terms, published at [nvidia.com/en-us/about-nvidia/terms-of-service/](https://www.nvidia.com/en-us/about-nvidia/terms-of-service/) and in the license accompanying each download. NVIDIA account registration is required to obtain them. Confirm your use case complies before proceeding.
+
+**Google public STUN.** GPU instances are configured to use `stun.l.google.com:19302` to discover their public media candidate during ICE negotiation. This is a free public endpoint operated by Google with no published terms of service, no pricing, and no availability or performance guarantee. It receives the instance's IP address as an inherent part of the STUN protocol. To avoid the dependency, point the runtime at your own STUN infrastructure by changing the two values at the top of [`deployment/ami/scripts/startup.ps1`](deployment/ami/scripts/startup.ps1) — see [Production Considerations](architecture/architecture.md#production-considerations-not-implemented-by-this-architecture).
+
+See [THIRD-PARTY-LICENSES](THIRD-PARTY-LICENSES) for license attribution.
+
 ## Disclaimer
 
 This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.

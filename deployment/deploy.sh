@@ -551,12 +551,12 @@ log "    2. Login: demo / $TEST_PASSWORD"
 log "    3. Press \"Connect to VR\""
 echo ""
 
-# Native clients do not use the CloudFront URL above — CloudXR Framework compiles its
-# signaling port in as 48322, which CloudFront cannot serve, so they connect straight to the
-# ALB. Only worth printing when a native pool exists to serve them.
+# Native clients use the same CloudFront endpoint, but the port has to be explicit: CloudXR
+# Framework otherwise defaults to 48322, which CloudFront does not serve. Only worth printing
+# when a native pool exists to serve them.
 if [[ "${NATIVE_POOL_SIZE:-0}" -gt 0 ]]; then
     log "  To connect from Apple Vision Pro / iOS (native path):"
-    log "    Proxy Host:    origin.$DOMAIN   (port 48322, direct to the ALB — not CloudFront)"
+    log "    Proxy Host:    $DOMAIN:443   (the :443 is required — see avp-client-guide.md)"
     log "    Login:         demo / $TEST_PASSWORD"
     log "    Build a client: see deployment/avp-client-guide.md"
     echo ""

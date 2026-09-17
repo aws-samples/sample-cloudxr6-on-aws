@@ -23,7 +23,7 @@ instance often needs a reconnect first, covered in [Troubleshooting](#troublesho
 
 ## Contents
 
-- [Why the native path differs](#why-the-native-path-differs)
+- [The one thing to get right: the port](#the-one-thing-to-get-right-the-port)
 - [Prerequisites](#prerequisites)
 - [Step 1 — Deploy with a native pool](#step-1--deploy-with-a-native-pool)
 - [Step 2 — Fetch and patch the viewer](#step-2--fetch-and-patch-the-viewer)
@@ -38,10 +38,14 @@ instance often needs a reconnect first, covered in [Troubleshooting](#troublesho
 
 ---
 
-## Why the native path differs
+## The one thing to get right: the port
 
-Web clients connect through CloudFront on 443. Native clients cannot, and the reason is worth
-understanding before you start, because it explains the whole shape of this guide.
+Native clients take the same route as web clients — CloudFront on 443, then the load balancer,
+then the proxy. They differ in the signaling path: the framework's RTSP-over-WebSocket signaling
+uses a fixed `/rtsp`, where the WebRTC web client uses `/sign_in`. The stack has a CloudFront
+behavior for each, so this is already handled; it matters only if you change the distribution.
+There is one detail you *do* have to get right, and it is the single most likely thing to go
+wrong, so it is worth understanding before you start.
 
 CloudXR Framework's connection type for a cloud proxy is:
 
@@ -51,21 +55,26 @@ case remoteSecure(host: String,
                   certificateValidationHandler: ...)
 ```
 
-There is no port parameter. The secure-signaling port is compiled into the framework, which
-attempts **322** and then **48322**. NVIDIA documents 48322 as the secure-signaling port and
-describes the proxy topology as `wss://<proxy>:48322`. CloudFront accepts viewer connections
-only on 80 and 443 and cannot be configured to serve 48322, so the native client and a
-CloudFront-fronted proxy have no port in common.
+Note there is no port parameter. If you pass a bare hostname, the framework falls back to its
+default secure-signaling port: it probes **322**, then **48322**. NVIDIA documents 48322 as the
+secure-signaling port and describes the proxy topology as `wss://<proxy>:48322`. CloudFront
+accepts viewer connections only on 80 and 443, so a bare hostname produces a connection timeout
+against a CloudFront edge — surfacing as a generic `0x800B1004` in the app with **nothing at all
+in the proxy log**, because the connection never arrives.
 
-Native clients therefore connect **directly to the load balancer** at `origin.<domain>:48322`.
-The stack creates that listener for you and exposes the hostname as the `NativeSignalingHost`
-output. Everything downstream is shared with the web path: same target group, same proxy, same
-Cognito check on the upgrade, same pool routing.
+The fix is to state the port in the host string:
 
-The tradeoff is that native signaling has no CloudFront edge in front of it, so no WAF and no
-Shield, and the load balancer's security group admits 48322 from the internet. The proxy's
-Cognito check is the only gate on that port. See
-[architecture.md](../architecture/architecture.md) for the full reasoning.
+```swift
+.remoteSecure(host: "cloudxr.example.com:443", ...)
+```
+
+`.remoteSecure` accepts a `host:port` value and honours the port. That behaviour is
+**undocumented** by NVIDIA as of 6.2.x — it was confirmed by their engineering team and verified
+by test. Without it, a CloudXR native client could not sit behind a CDN at all.
+
+The stack exposes the correct value, port included, as the `NativeSignalingHost` output. The
+setup script in the next step fills it in for you, so you only hit this if you are wiring a
+client up by hand.
 
 ---
 
@@ -107,10 +116,12 @@ If you deployed with `NATIVE_POOL_SIZE=0`, no instance will be registered in the
 the proxy will reject the connection with no instance available — the client reports a generic
 connection failure, which is confusing to debug. Set it and redeploy.
 
-The 48322 listener is created regardless of pool size, so a single topology holds for every
-deployment and there is no ordering dependency between the listener and the pool.
+No infrastructure differs between a deployment with a native pool and one without — native
+clients use the same CloudFront endpoint as web clients, so there is nothing extra to provision
+and no ordering dependency. `NATIVE_POOL_SIZE` only controls whether a GPU instance exists to
+serve them.
 
-Get the hostname your client will use:
+Get the value your client will use as its host:
 
 ```bash
 aws cloudformation describe-stacks \
@@ -120,14 +131,15 @@ aws cloudformation describe-stacks \
   --output text
 ```
 
-That prints `origin.<your-domain>`. Confirm it is reachable before touching Xcode — this takes
-seconds and rules out half the things that can go wrong later:
+That prints `<your-domain>:443` — port included, because it is required. Confirm the endpoint is
+reachable before touching Xcode; this takes seconds and rules out half of what can go wrong
+later:
 
 ```bash
-curl -s -o /dev/null -w 'health: %{http_code}\n' https://origin.<your-domain>:48322/health
+curl -s -o /dev/null -w 'health: %{http_code}\n' https://<your-domain>/health
 ```
 
-A `200` means the listener is up, TLS is valid, and the proxy is behind it.
+A `200` means CloudFront is serving, TLS is valid, and the proxy is behind it.
 
 ---
 
@@ -141,8 +153,8 @@ cd deployment/avp-client
 ./setup-avp-client.sh --domain <your-domain>
 ```
 
-Pass the **apex** domain (`cloudxr.example.com`), not the origin host. The script derives
-`origin.<domain>` itself, and tolerates you passing the origin form by stripping the prefix.
+Pass the plain domain (`cloudxr.example.com`). The script appends `:443` for you, and tolerates
+you passing a value that already carries a port.
 
 What it does:
 
@@ -150,7 +162,7 @@ What it does:
    this repo — deliberately outside it, so the working copy is never committed here
 2. Checks out commit `3c8653a12e7519c0e98ead8ba0d95e72bac7abb7`
 3. Applies `cloudxr-aws.patch`
-4. Rewrites `CloudXRAWSDefaults.signalingHost` to your `origin.<domain>`
+4. Rewrites `CloudXRAWSDefaults.signalingHost` to `<your-domain>:443`
 
 Use `--dest <path>` to put it somewhere else. The script refuses to overwrite an existing
 directory.
@@ -200,7 +212,7 @@ The app opens on a config panel with everything pre-filled except your credentia
 | Field | Value |
 |-------|-------|
 | Select Zone | `CloudXR on AWS proxy` |
-| Proxy Host | `origin.<your-domain>` |
+| Proxy Host | `<your-domain>:443` — the port is required |
 | Username | your Cognito user |
 | Password | that user's password |
 | Enable Hand Tracking | on |
@@ -297,16 +309,16 @@ an ID token via Cognito's `InitiateAuth`, and stores the refresh token in the Ke
 re-authentication. No AWS SDK dependency: the app client has no client secret, so `InitiateAuth`
 needs neither SigV4 signing nor a `SECRET_HASH`, and a plain `URLSession` POST suffices.
 
-Note it fetches `config.json` from the **apex** domain, deriving it by stripping the `origin.`
-prefix from the signaling host. That file is served by CloudFront from S3, not by the proxy —
-`.dockerignore` deliberately keeps it out of the container image so Cognito IDs are never baked
-into a build.
+Signaling and `config.json` share the same hostname, since both arrive through CloudFront. The
+file is served from S3 via CloudFront rather than by the proxy — `.dockerignore` deliberately
+keeps it out of the container image so Cognito IDs are never baked into a build.
 
 **`SessionConfigView.swift`.** Adds a `.cloudxrAwsProxy` branch that builds
 `.remoteSecure(host:signalingHeaders:certificateValidationHandler:)` with an
 `Authorization: Bearer` header and `x-cloudxr-device-type: native`. Certificate validation uses
-`SecTrustEvaluateWithError`, i.e. normal system trust, because the load balancer presents a
-CA-signed certificate.
+`SecTrustEvaluateWithError`, i.e. normal system trust, because the client's TLS peer is a
+CloudFront edge presenting a CA-signed certificate. (The ALB's regional certificate covers only
+the CloudFront-to-origin hop; clients never address the load balancer directly.)
 
 The connection type is assembled inside the existing `Task`, not in the synchronous branch above
 it, because the token is fetched asynchronously. That mirrors how the sample already defers guest
@@ -423,25 +435,60 @@ The line that matters looks like:
 Failed to create the RTSP session: HTTP Exception: WS upgrade failed: Timeout: connect timed out: <ip>:48322
 ```
 
-Resolve that IP. If it belongs to CloudFront rather than your load balancer, the Proxy Host is
-set to the apex domain instead of `origin.<domain>`, and the client is trying 48322 against an
-edge that cannot serve it. Compare against:
+**Look at the port.** If it says `48322` (or `322`), the Proxy Host is missing its `:443` — the
+framework fell back to its default signaling port, and CloudFront does not serve it. Set the host
+to `<your-domain>:443` and reconnect. This is by far the most common native misconfiguration, and
+the proxy log will be completely empty for these attempts because nothing ever reaches AWS.
+
+If the port reads `443` and it still times out, the problem is reachability rather than
+configuration. Check the endpoint directly:
 
 ```bash
-dig +short origin.<your-domain>     # should match the IP in the log
-dig +short <your-domain>            # CloudFront — should NOT match
+curl -s -o /dev/null -w 'health: %{http_code}\n' https://<your-domain>/health
 ```
 
 If the address is correct and the proxy log shows the tunnel was established, this is not a
 configuration problem — try reconnecting once or twice, and see
 [First connection after the instance boots](#first-connection-after-the-instance-boots-fails-or-streams-badly).
 
+### Connection fails immediately with `0x80420001`
+
+`NVST_SIGERR_FORBIDDEN`. The client log reads:
+
+```
+RTSP/WebSocket upgrade forbidden (403): WS upgrade failed: Cannot upgrade to WebSocket connection: Forbidden
+```
+
+Distinguish this from the port problem above by **how fast it fails**. A missing `:443` produces a
+~20-second connect timeout; this returns in under a second, which means TCP, TLS, and an HTTP
+request all completed. The endpoint is reachable and the port is right — something answered, and
+what it answered was 403.
+
+The proxy never returns 403 on an upgrade: it can only answer 401, 500, 502, 503, or 504, and it
+logs every upgrade before running any check. So an empty proxy log alongside a 403 means CloudFront
+answered, not the proxy — the request matched no ALB cache behavior, fell through to the default
+behavior pointing at S3, and S3 returned `AccessDenied` for a key it does not hold.
+
+Confirm which hop answered by checking the `Server` header:
+
+```bash
+curl -sS -o /dev/null -D - --http1.1 \
+  -H 'Connection: Upgrade' -H 'Upgrade: websocket' \
+  -H 'Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==' -H 'Sec-WebSocket-Version: 13' \
+  https://<your-domain>/rtsp | grep -iE '^HTTP|^server'
+```
+
+`401` with no `Server: AmazonS3` is correct — the upgrade reached the proxy and was refused for
+lack of a credential, which is all curl can demonstrate without a token. `403` with
+`Server: AmazonS3` means the `/rtsp*` cache behavior is missing from the distribution.
+
 ### Nothing appears in the proxy log
 
 If `aws logs filter-log-events --log-group-name /ecs/cloudxr-proxy` shows nothing for your
-attempt, the connection never reached AWS. Check the client log as above. A hostname with a
-trailing space fails URL construction and produces no network attempt whatsoever, which looks
-identical to a hang.
+attempt, the connection never reached the proxy. Check the client log as above. Two causes look
+identical from the app: a hostname with a trailing space fails URL construction and produces no
+network attempt whatsoever, and a 403 from CloudFront never reaches the proxy either — the error
+code tells them apart (`0x800B1004` versus `0x80420001`).
 
 ### `Upgrade rejected (invalid header token): jwt expired`
 
@@ -479,9 +526,15 @@ removing jitter; only real hardware fixes decode.
 
 ### Testing the upgrade with `curl`
 
-Useful for isolating whether a problem is client-side or server-side. You **must** force
-HTTP/1.1 — over HTTP/2 the `Connection: Upgrade` header is invalid, and the load balancer will
-return the web client's HTML with a `200`, which looks like a success:
+Useful for isolating whether a problem is client-side or server-side. Two things to get right.
+
+**Use the `/rtsp` path.** That is where the native framework signals, and it is the path with a
+CloudFront behavior routing to the ALB. A bare `https://<your-domain>/` matches only the default
+behavior and is served from S3, so you get the login page with a `200` no matter how healthy the
+proxy is.
+
+**Force HTTP/1.1.** Over HTTP/2 the `Connection: Upgrade` header is invalid, so the request is
+sent as an ordinary `GET` and never becomes an upgrade — you learn nothing about the tunnel.
 
 ```bash
 TOKEN=$(aws cognito-idp initiate-auth --auth-flow USER_PASSWORD_AUTH \
@@ -493,12 +546,15 @@ curl -s -i --http1.1 --max-time 15 \
   -H "Connection: Upgrade" -H "Upgrade: websocket" \
   -H "Sec-WebSocket-Version: 13" -H "Sec-WebSocket-Key: dGhlIHNhbXBsZSBub25jZQ==" \
   -H "Authorization: Bearer $TOKEN" -H "x-cloudxr-device-type: native" \
-  "https://origin.<your-domain>:48322/"
+  "https://<your-domain>/rtsp"
 ```
 
-`401` means auth is being enforced and your token was rejected. A `501` is actually the good
-outcome here: the proxy authenticated you and opened the tunnel, and the CloudXR Runtime then
-rejected `curl` because it does not speak CloudXR's protocol. Confirm in the proxy log:
+`401` means auth is being enforced and your token was rejected. `503` means you authenticated but
+no native-pool instance was free — check `NATIVE_POOL_SIZE` and the registry. A `403` with
+`Server: AmazonS3` means the `/rtsp*` cache behavior is missing from the distribution. A `501` is
+actually the good outcome here: the proxy authenticated you and opened the tunnel, and the CloudXR
+Runtime then rejected `curl` because it does not speak CloudXR's protocol. Confirm in the proxy
+log:
 
 ```
 Upgrade authenticated via header

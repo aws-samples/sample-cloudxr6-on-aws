@@ -121,10 +121,10 @@ index 54a1ca7..c67c5ea 100644
  			productName = CloudXRKit;
 diff --git a/CloudXRViewer/Common/CloudXRAWSAuth.swift b/CloudXRViewer/Common/CloudXRAWSAuth.swift
 new file mode 100644
-index 0000000..72fcc0c
+index 0000000..d370ff9
 --- /dev/null
 +++ b/CloudXRViewer/Common/CloudXRAWSAuth.swift
-@@ -0,0 +1,316 @@
+@@ -0,0 +1,321 @@
 +// Permission is hereby granted, free of charge, to any person obtaining a copy
 +// of this software and associated documentation files (the "Software"), to deal
 +// in the Software without restriction, including without limitation the rights
@@ -173,13 +173,17 @@ index 0000000..72fcc0c
 +/// deployment. `setup-avp-client.sh --domain <your-domain>` rewrites it for you; edit it here if
 +/// you are wiring the project up by hand.
 +enum CloudXRAWSDefaults {
-+    /// Hostname that terminates native signaling. This is the ALB (`origin.<domain>`), not the
-+    /// CloudFront apex, because CloudXRKit compiles the signaling port in as 48322 and CloudFront
-+    /// serves viewer traffic only on 80/443. `CloudXRAWSAuth` derives the apex from this name to
-+    /// locate `config.json`, which CloudFront does serve.
++    /// Host the client signals to, in `host:port` form.
++    ///
++    /// **The port is not optional.** CloudXR Framework defaults its secure-signaling port to
++    /// 48322 (it probes 322 first), and CloudFront serves viewer traffic only on 80/443. Passing
++    /// a bare hostname therefore produces a connection timeout against a CloudFront edge, with a
++    /// generic `0x800B1004` in the UI and nothing at all in the proxy log. `.remoteSecure`
++    /// accepts a `host:port` value and honours the port — undocumented by NVIDIA as of 6.2.x,
++    /// confirmed by their engineering team and by test.
 +    ///
 +    /// Matches the `NativeSignalingHost` output of the CloudFormation stack.
-+    static let signalingHost = "origin.cloudxr.example.com"
++    static let signalingHost = "cloudxr.example.com:443"
 +}
 +
 +/// Failure modes of the CloudXR-on-AWS sign-in path, phrased for display in the config UI.
@@ -301,17 +305,18 @@ index 0000000..72fcc0c
 +    ///
 +    /// The file is intentionally *not* in the proxy container image — `.dockerignore` excludes
 +    /// it so Cognito IDs are not baked into a build, and `deploy.sh` uploads it to S3 where
-+    /// CloudFront serves it from the apex domain. The signaling host, by contrast, is the ALB
-+    /// (`origin.<domain>`), because the native client's hardcoded 48322 cannot traverse
-+    /// CloudFront. So the apex is tried first by dropping a leading `origin.` label, then the
-+    /// signaling host itself as a fallback for topologies that serve both from one name.
++    /// CloudFront serves it. Signaling and config therefore share one hostname: everything
++    /// reaches the deployment through CloudFront on 443.
 +    private static func loadConfig(signalingHost: String) async throws -> CloudXRAWSDeploymentConfig {
-+        var candidates: [String] = []
-+        let originPrefix = "origin."
-+        if signalingHost.hasPrefix(originPrefix) {
-+            candidates.append(String(signalingHost.dropFirst(originPrefix.count)))
++        // The signaling host carries an explicit port (see CloudXRAWSDefaults.signalingHost).
++        // `https://host:443/config.json` is valid and resolves identically to the portless form,
++        // so try the value as given first, then again with the port stripped — which covers a
++        // deployment signaling on a non-standard port while serving config.json on 443.
++        var candidates: [String] = [signalingHost]
++        if let colon = signalingHost.lastIndex(of: ":") {
++            let withoutPort = String(signalingHost[signalingHost.startIndex..<colon])
++            if !withoutPort.isEmpty { candidates.append(withoutPort) }
 +        }
-+        candidates.append(signalingHost)
 +
 +        var lastError = "no reachable host"
 +        for host in candidates {
@@ -468,18 +473,19 @@ index e1c22ac..d9b0a9b 100644
  
      var connectButtonDisabled: Bool {
 diff --git a/CloudXRViewer/Common/SessionConfigView.swift b/CloudXRViewer/Common/SessionConfigView.swift
-index 3fca1a4..bb4ae04 100644
+index 3fca1a4..0957c45 100644
 --- a/CloudXRViewer/Common/SessionConfigView.swift
 +++ b/CloudXRViewer/Common/SessionConfigView.swift
-@@ -23,13 +23,30 @@ import CloudXRKit
+@@ -23,13 +23,31 @@ import CloudXRKit
  import OSLog
  
  struct SessionConfigView: View {
 -    @AppStorage("hostAddress") var hostAddress: String = ""
 -    @AppStorage("zone") private(set) var zone: Zone = .us_west
-+    // CLOUDXR-AWS: defaulted to the deployment's signaling host so a fresh install is ready to
-+    // connect with only credentials entered. Note this field is shared with the `.ipAddress`
-+    // zone by upstream design, so that path now opens with a hostname prefilled; clear it there.
++    // CLOUDXR-AWS: defaulted to the deployment's signaling host (in `host:port` form) so a fresh
++    // install is ready to connect with only credentials entered. Note this field is shared with
++    // the `.ipAddress` zone by upstream design, so that path now opens with a value prefilled;
++    // clear it there.
 +    @AppStorage("hostAddress") var hostAddress: String = CloudXRAWSDefaults.signalingHost
 +    // CLOUDXR-AWS: replaced a hand-pasted `bearerToken` field with a Cognito sign-in. The app
 +    // now fetches its own ID token (see CloudXRAWSAuth), which removes the hourly paste and the
@@ -505,7 +511,7 @@ index 3fca1a4..bb4ae04 100644
  #endif
  
      @AppStorage("genericAppID") var genericAppID: Int = 0
-@@ -210,7 +227,27 @@ struct SessionConfigView: View {
+@@ -210,7 +228,27 @@ struct SessionConfigView: View {
  
          var appID: UInt = 0
  
@@ -534,7 +540,7 @@ index 3fca1a4..bb4ae04 100644
              if application.appID != .unknown {
                  appID = application.appID.rawValue
              } else if genericAppID > 0 {
-@@ -227,8 +264,6 @@ struct SessionConfigView: View {
+@@ -227,8 +265,6 @@ struct SessionConfigView: View {
                      zone: zone.id
                  )
              }
@@ -543,7 +549,7 @@ index 3fca1a4..bb4ae04 100644
          }
  
          if appModel.session == nil {
-@@ -236,6 +271,50 @@ struct SessionConfigView: View {
+@@ -236,6 +272,54 @@ struct SessionConfigView: View {
          }
  
          Task { @MainActor in
@@ -562,10 +568,14 @@ index 3fca1a4..bb4ae04 100644
 +                    hasStoredAWSSession = CloudXRAWSAuth.hasStoredSession
 +                    awsAuthError = nil
 +
-+                    // Signaling runs over WSS to the proxy hostname, which terminates TLS with a
++                    // Signaling runs over WSS through CloudFront, which terminates TLS with a
 +                    // CA-signed certificate. The proxy authenticates the upgrade from these
-+                    // headers and picks a backend GPU instance itself, so no server IP or port
-+                    // is supplied here. Media is negotiated separately via ICE.
++                    // headers and picks a backend GPU instance itself, so no server IP is
++                    // supplied. Media is negotiated separately via ICE.
++                    //
++                    // `host` must carry an explicit `:443`. The framework otherwise defaults to
++                    // its secure-signaling port (48322, after probing 322), which CloudFront
++                    // cannot serve — see CloudXRAWSDefaults.signalingHost.
 +                    cxrConfig.connectionType = .remoteSecure(
 +                        host: trimmedHost,
 +                        signalingHeaders: [
@@ -595,7 +605,7 @@ index 3fca1a4..bb4ae04 100644
                  let guestAuth = try await guestModeComponent.getGuestAuth(appID: appID)
  
 diff --git a/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift b/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
-index 5cb891b..665135f 100644
+index 5cb891b..6107287 100644
 --- a/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
 +++ b/CloudXRViewer/visionOS/SessionConfigView+visionOS.swift
 @@ -69,6 +69,62 @@ extension SessionConfigView {
@@ -610,7 +620,7 @@ index 5cb891b..665135f 100644
 +                    HStack {
 +                        Text("Proxy Host")
 +                        Spacer()
-+                        TextField("cloudxr.example.com", text: $hostAddress)
++                        TextField("cloudxr.example.com:443", text: $hostAddress)
 +                            .autocapitalization(.none)
 +                            .multilineTextAlignment(.trailing)
 +                            .autocorrectionDisabled(true)

@@ -37,8 +37,8 @@ No instance IPs, media ports, or server addresses are entered manually.
 3. After sign-in, the app automatically:
    - Fetches `https://<domain>/config.json` to discover the Cognito region and app client ID, so nothing about the deployment is compiled into the app
    - Exchanges the credentials for a Cognito ID token (`InitiateAuth`), and stores the refresh token so later launches need no password
-   - Configures a CloudXR session with `.remoteSecure(host: "origin.your-domain.com", signalingHeaders: ["Authorization": "Bearer <token>", "x-cloudxr-device-type": "native"])` — the `origin.` ALB hostname, since CloudXRKit signals on 48322 and CloudFront serves only 80/443. `x-cloudxr-device-type: native` is what routes to the native pool; without it the proxy would pick the WebRTC pool
-   - Connects via WSS directly to the ALB on 48322 for signaling. The proxy validates the token on the upgrade, selects an available native-pool GPU instance, and tunnels to it on port 48010
+   - Configures a CloudXR session with `.remoteSecure(host: "your-domain.com:443", signalingHeaders: ["Authorization": "Bearer <token>", "x-cloudxr-device-type": "native"])`. The `:443` is required — CloudXR Framework otherwise defaults to port 48322, which CloudFront does not serve. `x-cloudxr-device-type: native` is what routes to the native pool; without it the proxy would pick the WebRTC pool
+   - Connects via WSS through CloudFront for signaling, through the same entry point as the web path but on its own `/rtsp` resource path rather than `/sign_in*`. The proxy validates the token on the upgrade, selects an available native-pool GPU instance, and tunnels to it on port 48010
    - Negotiates the media path via ICE, then streams media directly to/from the GPU instance over UDP
 4. User sees the XR application in their AVP
 
@@ -82,12 +82,10 @@ sequenceDiagram
 
     Note over Client: Web: user presses "Connect" on React sample<br/>Native: app calls .remoteSecure() automatically
 
-    alt Web client
-        Client->>CF: WSS upgrade (:443)
-        CF->>ALB: Forward upgrade (:443)
-    else Native client (Apple)
-        Client->>ALB: WSS upgrade (:48322, bypasses CloudFront)
-    end
+    Note over Client,CF: Native clients address this as <domain>:443 —<br/>the framework otherwise defaults to port 48322.
+
+    Client->>CF: WSS upgrade (:443)
+    CF->>ALB: Forward upgrade (:443)
     ALB->>Proxy: Forward upgrade
     Proxy->>Proxy: Verify the Cognito JWT presented on the upgrade
     Proxy->>DDB: Select instance for this session, mark occupied
@@ -473,8 +471,8 @@ A native Swift app built with CloudXR Framework. The app is a separate build fro
 
 1. App fetches `https://<domain>/config.json` (served by CloudFront from S3) to discover the Cognito region and app client ID
 2. App authenticates against Cognito with `InitiateAuth` → obtains an ID token. The refresh token is retained so subsequent launches need no password
-3. App configures CloudXR session: `.remoteSecure(host: "origin.cloudxr.example.com", signalingHeaders: ["Authorization": "Bearer <token>", "x-cloudxr-device-type": "native"])`. The `Authorization` header authenticates the signaling upgrade; `x-cloudxr-device-type` selects the native pool — without it the proxy routes to the WebRTC pool. Note the host is the **`origin.` ALB hostname, not the apex** — `.remoteSecure` takes no port argument and CloudXRKit connects on 48322, which CloudFront cannot serve. This is the `NativeSignalingHost` stack output
-4. Framework connects via WSS directly to the ALB on 48322 for signaling, bypassing CloudFront. The proxy validates the token, selects an available native-pool instance, marks it occupied, and tunnels to it on port 48010
+3. App configures CloudXR session: `.remoteSecure(host: "cloudxr.example.com:443", signalingHeaders: ["Authorization": "Bearer <token>", "x-cloudxr-device-type": "native"])`. The `Authorization` header authenticates the signaling upgrade; `x-cloudxr-device-type` selects the native pool — without it the proxy routes to the WebRTC pool. **The `:443` is not optional** — CloudXR Framework defaults its secure-signaling port to 48322, which CloudFront cannot serve, so a bare hostname times out against a CloudFront edge. This is the `NativeSignalingHost` stack output
+4. Framework connects via WSS through CloudFront for signaling, on its own `/rtsp` resource path rather than the `/sign_in*` path web clients use. Both have a CloudFront behavior routing to the ALB. The proxy validates the token, selects an available native-pool instance, marks it occupied, and tunnels to it on port 48010
 5. Media path negotiated via ICE; direct UDP media streaming established to the GPU instance
 6. User is in VR
 
@@ -532,12 +530,17 @@ The web client is served from S3 via CloudFront. It consists of:
 
 After login, the page redirects to the React sample with the proxy URL (`proxyUrl`) in the URL. The stock React sample does not read URL parameters, so `deploy.sh` patches the harvested `cloudxr/index.html` with a small script that populates the connection field and selects VR immersive mode on load. Note the patch exists only in the S3 copy — re-harvesting or re-syncing that file without re-running `deploy.sh` silently drops it. The media address and media port fields are intentionally left blank so the client negotiates the media path via ICE.
 
-Web traffic flows through CloudFront:
+All traffic flows through CloudFront as the single entry point:
 1. **Static files** (login page, CloudXR.js client) → CloudFront serves from S3 edge cache
 2. **API calls** (`POST /api/session`) → CloudFront forwards to ALB → Proxy
-3. **WebSocket signaling** (`/sign_in?...` or `/<resource-path>/sign_in?...`) → CloudFront forwards to ALB → Proxy → GPU instance (transparent TCP tunnel)
+3. **WebSocket signaling** — web/WebRTC (`/sign_in?...` or `/<resource-path>/sign_in?...`), native (`/rtsp`) → CloudFront forwards to ALB → Proxy → GPU instance (transparent TCP tunnel)
 
-**Native (Apple) clients do not use this path.** They connect straight to the ALB at `origin.<domain>:48322`, because CloudXRKit compiles its signaling port in and CloudFront serves viewer traffic only on 80/443. Everything downstream of the ALB is shared — same target group, same proxy, same Cognito check, same pool routing. See the [architecture document](../architecture/architecture.md) for the full reasoning and the security tradeoff this implies.
+**Native (Apple) clients use the same entry point** as the web client, with two differences:
+
+- **Signaling path.** The CloudXR Framework's RTSP-over-WebSocket signaling uses a fixed `/rtsp` resource path, not the `/sign_in*` path the WebRTC web client uses. Both have their own CloudFront cache behavior routing to the ALB. Note the failure mode if a signaling path has no behavior: CloudFront applies the default behavior, which points at S3, and S3 answers `403 AccessDenied` for a key it does not hold. The client reports `NVST_SIGERR_FORBIDDEN (0x80420001)` and the proxy log stays empty because the request never arrives. A working web client is no evidence that the native path is routed — the paths are different.
+- **Explicit port.** They must address the endpoint as `<domain>:443`. CloudXR Framework defaults its secure-signaling port to 48322, which CloudFront does not serve, so a bare hostname fails with a timeout and nothing in the proxy log. `.remoteSecure` honours a `host:port` value — undocumented by NVIDIA as of 6.2.x, confirmed by their engineering team and by test.
+
+See [avp-client-guide.md](avp-client-guide.md).
 
 CloudFront supports WebSocket protocol upgrades when the origin request policy forwards the required headers (`Sec-WebSocket-Key`, `Sec-WebSocket-Version`). The `AllViewer` managed policy is used for signaling paths.
 
@@ -601,13 +604,13 @@ The two ACM certificates and their Route 53 validation records also persist — 
 - LÖVR sample: **v1.2.0**, pinned to commit `6b30ddc1c20117a414d2eb5068686ad6b0fe3a31` (upstream publishes no git tags or releases, so the commit is the only durable reference)
 - Proxy: **ECS Fargate** (x86_64, transparent TCP tunnel for WebSocket, HTTP API for session allocation). Pre-built image: `public.ecr.aws/e8e8t8v2/cloudxr6-proxy:v3.0.0`
 - Signaling proxy pattern: **Transport-level TCP tunnel** (not message-level relay — CloudXR Runtime's signaling protocol requires connection identity preservation)
-- DNS: Route 53 → **CloudFront** for `<domain>` (web clients — static, API, WebSocket), and → **ALB** for `origin.<domain>` (CloudFront's origin, and the endpoint native clients use on 48322)
+- DNS: Route 53 → **CloudFront** (single entry point for all traffic — static, API, WebSocket), plus an `origin.<domain>` alias to the ALB used only as CloudFront's origin hostname
 - CloudFront routes: static files from S3 (default), API/WebSocket forwarded to ALB (`AllViewer` origin request policy for WebSocket header forwarding)
 - Instance registry: **DynamoDB** (on-demand billing)
 - One streaming session per GPU instance
 - GPU instances use **auto-assigned public IPs** (no EIPs — simpler, no limit concerns)
 - Proxy → GPU: **raw TCP** over VPC private network (proxy tunnels the WebSocket connection)
-- ALB: **two HTTPS listeners, no plaintext**, both `ELBSecurityPolicy-TLS13-1-2-2021-06` with the certificate from `CERT_ARN_REGIONAL`. **443** for web traffic, admitting only CloudFront's `com.amazonaws.global.cloudfront.origin-facing` managed prefix list (looked up per-region by `deploy.sh`), so that port cannot be reached directly. **48322** for native signaling, open to `0.0.0.0/0` because CloudXRKit compiles that port in and CloudFront cannot serve it — on this port the proxy's Cognito check is the only gate, with no WAF or Shield in front. Created for every deployment, including `NATIVE_POOL_SIZE=0`, so one topology holds everywhere
+- ALB: **HTTPS:443 only** (no plaintext listener), `ELBSecurityPolicy-TLS13-1-2-2021-06`, certificate from `CERT_ARN_REGIONAL`. Internet-facing but its security group admits only CloudFront's `com.amazonaws.global.cloudfront.origin-facing` managed prefix list (looked up per-region by `deploy.sh`), so it cannot be reached directly
 - CloudFront → ALB origin: **`https-only`, TLSv1.2**, via the `origin.<domain>` Route 53 record so the origin certificate matches the hostname
 - **One stack per region** is the supported topology. Resource names (`cloudxr-alb`, `cloudxr-cluster`, the `CloudXRInstances` table, and others) are fixed, so a second concurrent stack in the same region will fail on name conflicts. Deploy to a different region for a second environment
 - Authentication: Cognito JWT required on **both** `POST /api/session` and the WebSocket signaling upgrade. The upgrade accepts the token from `Authorization: Bearer`, a `token` query parameter, or the `cxr_token` cookie set by the login page

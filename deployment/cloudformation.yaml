@@ -176,21 +176,18 @@ Resources:
   AlbSecurityGroup:
     Type: AWS::EC2::SecurityGroup
     Properties:
-      GroupDescription: ALB - 443 from CloudFront only; 48322 from internet for native signaling
+      GroupDescription: ALB - HTTPS from CloudFront origin-facing ranges only
       VpcId: !Ref VPC
-      # Two ingress paths, deliberately different:
+      # Restricted to CloudFront's origin-facing prefix list rather than 0.0.0.0/0.
+      # The ALB is internet-facing (it must be, to be a CloudFront origin), so an open
+      # rule here would let anyone reach it directly — bypassing CloudFront and any
+      # edge protection. Only 443 is open; there is no plaintext listener.
       #
-      #   443   — web clients, reachable only from CloudFront's origin-facing prefix list.
-      #           The ALB is internet-facing (it must be, to serve as a CloudFront origin),
-      #           so an open rule here would let anyone bypass CloudFront and its edge
-      #           protection. There is no plaintext listener.
-      #
-      #   48322 — native (Apple) clients, open to the internet. This is not a preference;
-      #           CloudXRKit compiles its secure-signaling port in and offers no override
-      #           (`.remoteSecure` takes no port argument), while CloudFront serves viewer
-      #           traffic only on 80/443. The two cannot meet, so native clients must reach
-      #           the ALB directly. See the security note below and the port table in
-      #           architecture.md.
+      # Every client path arrives here through CloudFront, including Apple native clients.
+      # CloudXR Framework defaults its secure-signaling port to 48322, which CloudFront
+      # cannot serve, but the port is overridable: the client passes `host:443` and the
+      # framework honours it. So no additional listener or ingress rule is needed — see
+      # the native client notes in deployment/avp-client-guide.md.
       SecurityGroupIngress:
         - IpProtocol: tcp
           FromPort: 443
@@ -200,18 +197,6 @@ Resources:
           # 60-rules-per-security-group quota, so this group has little headroom.
           # Adding a second prefix-list rule here will fail with
           # RulesPerSecurityGroupLimitExceeded — request a quota increase first.
-          # A plain CIDR rule (like 48322 below) costs one entry, so it fits.
-        # SECURITY TRADEOFF, stated plainly: this port is open to 0.0.0.0/0 and is not
-        # behind CloudFront, so native signaling gets no WAF and no Shield. The proxy's
-        # Cognito check on the WebSocket upgrade is the only gate — an unauthenticated
-        # upgrade is rejected with 401 (see handleUpgrade in proxy/index.js). The port is
-        # created unconditionally, including when NativePoolSize is 0, so that one
-        # topology holds for every deployment; restrict this to known client CIDRs if
-        # your environment allows it.
-        - IpProtocol: tcp
-          FromPort: 48322
-          ToPort: 48322
-          CidrIp: 0.0.0.0/0
 
   ProxySecurityGroup:
     Type: AWS::EC2::SecurityGroup
@@ -292,44 +277,11 @@ Resources:
         - Type: forward
           TargetGroupArn: !Ref ALBTargetGroup
 
-  # Native (Apple) signaling listener.
-  #
-  # Native clients do not traverse CloudFront. CloudXRKit's `.remoteSecure` connection type
-  # has no port parameter — the secure-signaling port is compiled into the framework, which
-  # attempts 322 and then 48322 (NVIDIA documents 48322 for secure connections; see
-  # network-setup and the cloudxr-js proxy topology `wss://<proxy>:48322`). CloudFront accepts
-  # viewer connections only on 80/443 and cannot be configured to serve 48322, so the native
-  # client and a CloudFront-fronted proxy cannot meet. Native clients therefore connect
-  # straight to the ALB at origin.<domain>:48322, which the regional certificate already
-  # covers.
-  #
-  # Web clients are unaffected and still arrive via CloudFront on 443. Both paths terminate on
-  # the same target group and the same proxy, which authenticates every upgrade against Cognito
-  # and selects the backend pool from the x-cloudxr-device-type header.
-  #
-  # Same TLS policy as the 443 listener. CloudXRKit negotiates TLS 1.2 with
-  # ECDHE-RSA-AES256-GCM-SHA384, which this policy permits.
-  ALBNativeSignalingListener:
-    Type: AWS::ElasticLoadBalancingV2::Listener
-    Properties:
-      LoadBalancerArn: !Ref ALB
-      Port: 48322
-      Protocol: HTTPS
-      SslPolicy: ELBSecurityPolicy-TLS13-1-2-2021-06
-      Certificates:
-        - CertificateArn: !Ref RegionalCertificateArn
-      DefaultActions:
-        - Type: forward
-          TargetGroupArn: !Ref ALBTargetGroup
-
   # --------------------------------------------------------------------------
-  # Route 53 — two records, because there are two client ingress paths.
-  #
-  #   <domain>         -> CloudFront. Entry point for web clients: static content from S3,
-  #                       API and WebSocket signaling forwarded to the ALB on 443.
-  #   origin.<domain>  -> ALB. Required as CloudFront's origin hostname (see OriginDNSRecord),
-  #                       and also the hostname native clients connect to on 48322, since
-  #                       CloudFront cannot serve that port.
+  # Route 53 — points the domain to CloudFront, the single entry point for all
+  # client traffic. CloudFront serves static content from S3 and forwards API and
+  # WebSocket signaling to the ALB. The origin.<domain> record below exists so
+  # CloudFront can reach the ALB by a name the regional certificate covers.
   # --------------------------------------------------------------------------
   DNSRecord:
     Type: AWS::Route53::RecordSet
@@ -344,10 +296,7 @@ Resources:
   # CloudFront connects to the ALB by this hostname rather than its
   # *.elb.amazonaws.com name, so the certificate presented by the ALB matches the
   # hostname CloudFront asked for. Without this, an https-only origin fails validation.
-  #
-  # Native clients also target this name directly on 48322, and rely on the same certificate
-  # match — CloudXRKit validates the server against system trust, so the name must be one the
-  # regional certificate covers. Exposed as the NativeSignalingHost stack output.
+  # This record is internal plumbing — clients never address it directly.
   OriginDNSRecord:
     Type: AWS::Route53::RecordSet
     Properties:
@@ -448,6 +397,17 @@ Resources:
             OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
           # WebSocket signaling — direct path (without signalingResourcePath prefix)
           - PathPattern: /sign_in*
+            TargetOriginId: ALBOrigin
+            ViewerProtocolPolicy: https-only
+            CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
+            OriginRequestPolicyId: 216adef6-5c7f-47e4-b989-5492eafa07d3  # AllViewer
+          # WebSocket signaling — native clients (Apple Vision Pro and other CloudXR
+          # framework clients). The framework's RTSP-over-WebSocket signaling uses a
+          # fixed /rtsp resource path, not the /sign_in* path the WebRTC web client
+          # uses. Without this behavior the upgrade falls through to DefaultCacheBehavior
+          # and is served by S3, which answers 403 for a key it does not have — the
+          # client surfaces that as NVST_SIGERR_FORBIDDEN (0x80420001).
+          - PathPattern: /rtsp*
             TargetOriginId: ALBOrigin
             ViewerProtocolPolicy: https-only
             CachePolicyId: 4135ea2d-6df8-44a3-9df3-4b5a84be39ad  # CachingDisabled
@@ -726,14 +686,15 @@ Resources:
 # ============================================================================
 Outputs:
   ProxyUrl:
-    Description: CloudXR proxy endpoint for web clients (via CloudFront)
+    Description: CloudXR proxy endpoint (CloudFront — all client paths)
     Value: !Sub 'https://${DomainName}'
   NativeSignalingHost:
     Description: >-
-      Hostname native (Apple) clients connect to. Signaling reaches the ALB directly on TCP
-      48322, bypassing CloudFront, because CloudXRKit compiles that port in and CloudFront
-      serves only 80/443. Enter this value as the Proxy Host in the client.
-    Value: !Sub 'origin.${DomainName}'
+      Value Apple native clients enter as the host. The port must be stated explicitly:
+      CloudXR Framework defaults its secure-signaling port to 48322, which CloudFront does not
+      serve, and omitting ':443' produces a connection timeout against a CloudFront edge. See
+      deployment/avp-client-guide.md.
+    Value: !Sub '${DomainName}:443'
 
   CognitoUserPoolId:
     Description: Cognito User Pool ID

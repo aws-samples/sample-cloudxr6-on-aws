@@ -10,8 +10,10 @@
 #   ./setup-avp-client.sh --domain cloudxr.example.com [--dest <path>]
 #
 #   --domain   Your deployment's domain, i.e. the DomainName parameter of the stack. The client
-#              connects to origin.<domain> on 48322, which is the stack's NativeSignalingHost
-#              output. Pass the apex, not the origin host — the script derives it.
+#              signals to <domain>:443 through CloudFront, which is the stack's
+#              NativeSignalingHost output. The script appends the port for you — it must be
+#              explicit, because CloudXR Framework otherwise defaults to port 48322, which
+#              CloudFront does not serve.
 #   --dest     Where to create the project. Defaults to ../../../cloudxr-apple-generic-viewer
 #              relative to this script, i.e. a sibling of this repo. Deliberately outside the
 #              repo so the working copy is never committed here.
@@ -26,7 +28,7 @@ UPSTREAM_REPO="https://github.com/NVIDIA/cloudxr-apple-generic-viewer.git"
 # target would break `git apply` in ways that are tedious to diagnose. Bump this consciously and
 # regenerate the patch when you do.
 UPSTREAM_COMMIT="3c8653a12e7519c0e98ead8ba0d95e72bac7abb7"
-PLACEHOLDER_HOST="origin.cloudxr.example.com"
+PLACEHOLDER_HOST="cloudxr.example.com:443"
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PATCH_FILE="$SCRIPT_DIR/cloudxr-aws.patch"
@@ -40,7 +42,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --domain) DOMAIN="${2:-}"; shift 2 ;;
         --dest)   DEST="${2:-}";   shift 2 ;;
-        -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+        -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
         *) die "unknown argument: $1 (try --help)" ;;
     esac
 done
@@ -48,12 +50,16 @@ done
 [[ -n "$DOMAIN" ]] || die "--domain is required (e.g. --domain cloudxr.example.com)"
 [[ -f "$PATCH_FILE" ]] || die "patch not found: $PATCH_FILE"
 
-# Accept an origin.* value too, since that is what the stack output prints, but store the apex.
+# Tolerate a value that already carries a port, or the legacy origin.* form, and normalise both
+# to the apex domain before appending :443.
+DOMAIN="${DOMAIN%%:*}"
 if [[ "$DOMAIN" == origin.* ]]; then
-    log "note: stripping 'origin.' prefix — pass the apex domain"
+    log "note: stripping 'origin.' prefix — native clients now go through CloudFront at the apex"
     DOMAIN="${DOMAIN#origin.}"
 fi
-SIGNALING_HOST="origin.$DOMAIN"
+# The port is deliberate, not cosmetic. Without it the framework dials 48322 and the connection
+# times out against a CloudFront edge with no trace in the proxy log.
+SIGNALING_HOST="$DOMAIN:443"
 
 command -v git >/dev/null || die "git is required"
 command -v xcodebuild >/dev/null || log "warning: xcodebuild not found — install Xcode before building"

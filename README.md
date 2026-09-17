@@ -1,4 +1,4 @@
-# CloudXR 6 on AWS — A Reference Architecture and Deployment Guide
+# Streaming Immersive Digital Worlds with NVIDIA CloudXR 6 on AWS
 
 An AWS-specific reference architecture and deployment guide for [NVIDIA CloudXR 6](https://docs.nvidia.com/cloudxr-sdk/), optimized for ultra-low latency XR streaming via [AWS Local Zones](https://aws.amazon.com/about-aws/global-infrastructure/localzones/).
 

@@ -231,7 +231,9 @@ fi
 # ============================================================================
 # Validate required config values
 # ============================================================================
-REQUIRED_VARS=("GPU_ZONE" "GPU_TYPE" "DOMAIN" "HOSTED_ZONE_ID" "CERT_ARN" "CERT_ARN_REGIONAL" "AMI_ID")
+# AMI_ID is deliberately absent — the dedicated check below gives a more actionable
+# message than the generic "required value missing" this loop emits.
+REQUIRED_VARS=("GPU_ZONE" "GPU_TYPE" "DOMAIN" "HOSTED_ZONE_ID" "CERT_ARN" "CERT_ARN_REGIONAL")
 for var in "${REQUIRED_VARS[@]}"; do
     if [[ -z "${!var:-}" ]]; then
         error "Required config value missing: $var"
@@ -240,7 +242,10 @@ for var in "${REQUIRED_VARS[@]}"; do
     fi
 done
 
-if [[ "$AMI_ID" == "" || "$AMI_ID" == "ami-" ]]; then
+# Defaulted with :- because AMI_ID is not in REQUIRED_VARS above: if the line is absent
+# from config.env entirely, a bare "$AMI_ID" would abort under `set -u` with an unbound
+# variable instead of the message below.
+if [[ -z "${AMI_ID:-}" || "${AMI_ID}" == "ami-" ]]; then
     error "AMI_ID is not set. Run './ami/build-ami.sh' first, then paste the AMI ID into config.env."
     exit 1
 fi

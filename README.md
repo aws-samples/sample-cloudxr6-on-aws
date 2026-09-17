@@ -25,7 +25,7 @@ The full architecture design document begins with an overview of the two primary
 |------|-------------|
 | [architecture/](architecture/) | Full architecture design document and Mermaid diagram |
 | [deployment/](deployment/) | Full architecture deployment guide - complete steps to deploy full architecture. Also contains [avp-client-guide.md](deployment/avp-client-guide.md), which covers building and testing an Apple Vision Pro client against a deployment |
-| [mvp-lovr-demos/](mvp-lovr-demos/) | (Optional Resource) Minimal single-instance demo: one GPU instance streaming the LÖVR sample directly to one headset. The **Quest 3 guide is complete and end-to-end tested**; the Apple Vision Pro guide is a placeholder (see Status below). Intentionally bare-bones — no HTTPS, no proxy, no auth |
+| [mvp-lovr-demos/](mvp-lovr-demos/) | (Optional Resource) Minimal single-instance demo: one GPU instance streaming the LÖVR sample directly to one Quest 3, end-to-end tested. Intentionally bare-bones — no HTTPS, no proxy, no auth |
 
 ## Status
 
@@ -34,9 +34,6 @@ The full architecture design document begins with an overview of the two primary
 ✅ **Validated (Apple Vision Pro / native path)** — Authentication, instance selection, signaling, ICE-negotiated UDP media, the bidirectional data channel, and session lifecycle all confirmed against a live deployment, streaming at 60 FPS with 21ms network latency to the LAX Local Zone. Both paths were exercised on the same deployment concurrently.
 
   Tested with the **visionOS Simulator**, not physical hardware. The simulator runs the same CloudXR Framework binary, so the protocol path is exercised identically — but visual quality and bitrate are **not** representative (software decode caps the stream well below available bandwidth), and real hand and eye tracking are untested. See [the validation status table](deployment/full-architecture-deployment-guide.md#validation-status-of-the-native-path) for the precise breakdown, and [avp-client-guide.md](deployment/avp-client-guide.md) to reproduce it.
-
-🚧 Coming soon:
-- AVP / native path MVP demo instructions (the single-instance demo under `mvp-lovr-demos/`; the full architecture path above is validated)
 
 ## Based On
 

@@ -110,7 +110,15 @@ The native pool is what serves Apple clients. In `config.env`:
 
 ```bash
 NATIVE_POOL_SIZE=1
+WEBRTC_POOL_SIZE=0
 ```
+
+**Set both.** `WEBRTC_POOL_SIZE` defaults to `1`, so setting only `NATIVE_POOL_SIZE` leaves you
+paying for two GPU instances when this guide needs one. Zeroing the webrtc pool has one
+consequence worth knowing: `deploy.sh` harvests the CloudXR.js web client from a webrtc-pool
+instance, so with none running the `/cloudxr/` path is left unpopulated and the browser client
+will not work. That does not affect the native path. Leave `WEBRTC_POOL_SIZE=1` if you want both
+paths live on the same deployment, as the validation run did.
 
 If you deployed with `NATIVE_POOL_SIZE=0`, no instance will be registered in the native pool and
 the proxy will reject the connection with no instance available — the client reports a generic

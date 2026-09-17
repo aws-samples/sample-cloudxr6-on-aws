@@ -13,7 +13,7 @@ graph LR
     Quest -->|"HTTP dev server (TCP 8080)"| GPU
 ```
 
-Minimal-effort instructions for proving the CloudXR streaming pipeline works: a single GPU instance streaming the LÖVR VR sample to Meta Quest 3 in immersive mode.
+The fastest path to proving the CloudXR streaming pipeline works: a single GPU instance streaming the LÖVR VR sample to Meta Quest 3 in immersive mode.
 
 This demo runs from a **CloudXR AMI** with everything pre-installed, so there are no manual driver installs, build tools or compilation once you have one. You launch an instance, start the web server, and connect from Quest.
 

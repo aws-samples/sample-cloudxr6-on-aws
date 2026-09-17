@@ -43,8 +43,12 @@ The full architecture design document begins with an overview of the two primary
 - [NVIDIA CloudXR Apple Generic Viewer](https://github.com/NVIDIA/cloudxr-apple-generic-viewer) (pinned to commit `3c8653a`; fetched and patched by `deployment/avp-client/setup-avp-client.sh`, not vendored here — see [avp-client-guide.md](deployment/avp-client-guide.md))
 - [NVIDIA CloudXR Release Notes](https://docs.nvidia.com/cloudxr-sdk/release/6/release_notes/release_notes.html)
 
+## Disclaimer
+
+This is sample code, for non-production usage. You should work with your security and legal teams to meet your organizational security, regulatory and compliance requirements before deployment.
+
+It is not an official product or offering from Amazon or AWS.
+
 ## License
 
 This sample is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
-
-It is not an official product or offering from Amazon or AWS.

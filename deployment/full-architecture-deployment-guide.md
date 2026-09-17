@@ -1,4 +1,4 @@
-# CloudXR 6 on AWS — Full Architecture Deployment Guide
+# Full Architecture Deployment Guide — NVIDIA CloudXR 6 on AWS
 
 This guide deploys the complete [CloudXR 6 on AWS reference architecture](../architecture/architecture.md) as a working system: WebSocket proxy, client authentication, instance registry, GPU compute fleet, and all supporting networking and security.
 

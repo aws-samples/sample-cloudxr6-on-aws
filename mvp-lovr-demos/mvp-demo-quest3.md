@@ -1,4 +1,4 @@
-# CloudXR 6 on AWS — MVP Demo (Quest 3)
+# MVP Demo, Quest 3 — NVIDIA CloudXR 6 on AWS
 
 ```mermaid
 graph LR

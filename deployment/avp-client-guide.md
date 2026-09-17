@@ -1,4 +1,4 @@
-# Apple Vision Pro Client — Build, Deploy, Test
+# Native Client for Apple Vision Pro — Build, Deploy, Test
 
 How to build an Apple Vision Pro client for a CloudXR-on-AWS deployment and stream to it, using
 NVIDIA's [CloudXR Generic Viewer](https://github.com/NVIDIA/cloudxr-apple-generic-viewer) sample

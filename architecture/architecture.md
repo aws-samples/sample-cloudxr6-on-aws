@@ -1,4 +1,4 @@
-# CloudXR 6 on AWS — A Reference Architecture - Design Document
+# Architecture Design Document — NVIDIA CloudXR 6 on AWS
 
 ---
 

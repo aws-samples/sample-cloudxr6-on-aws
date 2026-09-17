@@ -6,8 +6,6 @@ An AWS-specific reference architecture and deployment guide for [NVIDIA CloudXR 
 
 This architecture enables streaming high-fidelity VR/AR content from AWS GPU instances to XR headsets (Meta Quest, Apple Vision Pro, Pico) over the internet. Using NVIDIA-recommended GPU instances in AWS Local Zones, pose-to-render latency of ~35-40ms is achievable — within the range that CloudXR 6's compensation techniques (pose prediction, ATW) can mask effectively.
 
-Signaling is tunneled through a single HTTPS/WSS entry point that authenticates every request against Cognito — both the session API and the WebSocket upgrade — while media is established directly between client and GPU instance using ICE with a STUN server, the media establishment approach in [NVIDIA's cloud deployment guide](https://docs.nvidia.com/cloudxr-sdk/release/6/integration/cloud_deployment.html). Every client path, web and Apple native alike, arrives through CloudFront on 443.
-
 The full architecture design document begins with an overview of the two primary considerations at play when deploying CloudXR as a cloud-hosted service: latency and cost — to help you adapt this reference architecture to your specific use case(s) and needs.
 
 ## Target SDK Versions
@@ -29,11 +27,11 @@ The full architecture design document begins with an overview of the two primary
 
 ## Status
 
-✅ **Validated (Quest 3 / WebRTC path)** — The full architecture has been deployed and tested end-to-end. Quest 3 streams at ~90 FPS (the headset's target refresh rate) and 35-40ms pose-to-render from a g7e instance in the LAX Local Zone. Also validated on a `g6e.8xlarge` in the us-east-2 Region, confirming the parent-Region path.
+✅ **Quest 3 / WebRTC path** — Deployed and tested end-to-end at ~90 FPS (the headset's target refresh rate) and 35-40ms pose-to-render from a g7e in the LAX Local Zone. Also validated on a `g6e.8xlarge` in the us-east-2 Region, confirming the parent-Region path.
 
-✅ **Validated (Apple Vision Pro / native path)** — Authentication, instance selection, signaling, ICE-negotiated UDP media, the bidirectional data channel, and session lifecycle all confirmed against a live deployment, streaming at 60 FPS with 21ms network latency to the LAX Local Zone. Both paths were exercised on the same deployment concurrently.
+✅ **Apple Vision Pro / native path** — Auth, instance selection, signaling, ICE-negotiated UDP media, the data channel and session lifecycle all confirmed against a live deployment at 60 FPS with 21ms network latency to the LAX Local Zone. Both paths ran concurrently on one deployment.
 
-  Tested with the **visionOS Simulator**, not physical hardware. The simulator runs the same CloudXR Framework binary, so the protocol path is exercised identically — but visual quality and bitrate are **not** representative (software decode caps the stream well below available bandwidth), and real hand and eye tracking are untested. See [the validation status table](deployment/full-architecture-deployment-guide.md#validation-status-of-the-native-path) for the precise breakdown, and [avp-client-guide.md](deployment/avp-client-guide.md) to reproduce it.
+  Tested on the **visionOS Simulator**, not hardware. It runs the same CloudXR Framework binary, so the protocol path is exercised identically — but visual quality and bitrate are **not** representative (software decode), and real hand and eye tracking are untested. Full breakdown in [the validation status table](deployment/full-architecture-deployment-guide.md#validation-status-of-the-native-path); [avp-client-guide.md](deployment/avp-client-guide.md) to reproduce.
 
 ## Based On
 

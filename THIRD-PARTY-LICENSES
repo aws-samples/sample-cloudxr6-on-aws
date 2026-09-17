@@ -1,0 +1,63 @@
+Third-Party Licenses
+====================
+
+This sample includes third-party content as noted below. All other content is
+Copyright Amazon.com, Inc. or its affiliates, licensed under MIT-0 (see LICENSE).
+
+--------------------------------------------------------------------------------
+
+NVIDIA CloudXR Generic Viewer
+https://github.com/NVIDIA/cloudxr-apple-generic-viewer
+
+deployment/avp-client/cloudxr-aws.patch is a patch applied to the NVIDIA CloudXR
+Generic Viewer sample. As a unified diff it reproduces portions of that project's
+source as context and removed lines. The sample itself is not vendored here — it
+is fetched from NVIDIA at a pinned commit by
+deployment/avp-client/setup-avp-client.sh.
+
+SPDX-FileCopyrightText: Copyright (c) 2025 NVIDIA CORPORATION & AFFILIATES. All rights reserved.
+SPDX-License-Identifier: MIT
+
+Permission is hereby granted, free of charge, to any person obtaining a
+copy of this software and associated documentation files (the "Software"),
+to deal in the Software without restriction, including without limitation
+the rights to use, copy, modify, merge, publish, distribute, sublicense,
+and/or sell copies of the Software, and to permit persons to whom the
+Software is furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL
+THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING
+FROM, OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER
+DEALINGS IN THE SOFTWARE.
+
+--------------------------------------------------------------------------------
+
+Referenced, not included
+------------------------
+
+The following are fetched or pulled at build or deploy time rather than
+distributed in this repository. They are listed for awareness; their licences
+apply where they are obtained.
+
+  NVIDIA CloudXR Runtime, CloudXR.js, and CloudXR Framework (CloudXRKit)
+    Obtained from NVIDIA NGC and github.com/NVIDIA/cloudxr-framework.
+    Subject to NVIDIA's licence terms at the point of download.
+
+  NVIDIA CloudXR LOVR sample
+    https://github.com/NVIDIA/cloudxr-lovr-sample
+    Cloned at a pinned commit by deployment/ami/scripts/04-install-app.ps1.
+
+  NVIDIA CloudXR.js samples
+    https://github.com/NVIDIA/cloudxr-js-samples
+    Built on the instance during the AMI build and harvested by deploy.sh.
+
+  Proxy runtime dependencies
+    Declared in deployment/proxy/package.json and installed by npm at image
+    build time: @aws-sdk/client-dynamodb, @aws-sdk/lib-dynamodb, jsonwebtoken,
+    jwks-rsa.

@@ -45,4 +45,6 @@ The full architecture design document begins with an overview of the two primary
 
 ## License
 
-This project is provided as-is for reference purposes only, and is not an official product or offering from Amazon or AWS.
+This sample is licensed under the MIT-0 License. See the [LICENSE](LICENSE) file.
+
+It is not an official product or offering from Amazon or AWS.

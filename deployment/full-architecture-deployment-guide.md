@@ -124,9 +124,9 @@ CERT_ARN_REGIONAL=arn:aws:acm:us-west-2:123456789012:certificate/xxxxxxxx-xxxx-x
 # GPU fleet size
 WEBRTC_POOL_SIZE=1
 NATIVE_POOL_SIZE=0
-# Golden AMI — defaults to the published g7e 1-GPU AMI for us-west-2, matching the
-# GPU_ZONE and GPU_TYPE above. Another region needs that region's ID (see Step 1).
-AMI_ID=ami-0a7bcd77b90558f9c
+# Golden AMI for your GPU_ZONE's region and GPU_TYPE — provided to you, or built
+# in Step 1.
+AMI_ID=
 ```
 
 > Values may carry trailing `# comments` — both `deploy.sh` and `ami/build-ami.sh` strip them, along with surrounding whitespace. Quotes are not needed and are not stripped, so write `DOMAIN=cloudxr.example.com`, not `DOMAIN="cloudxr.example.com"`.
@@ -263,19 +263,11 @@ and `CERT_ARN_REGIONAL`.
 
 ## Step 1: Build the Golden AMI
 
-**Pre-built AMIs:** For select regions, pre-built base AMIs are available that include everything needed (NVIDIA GRID driver, CloudXR Runtime 6.2.1, LÖVR sample v1.2.0, firewall rules, startup script). If you use one, skip this step entirely — paste the AMI ID into `config.env` and proceed to Step 2.
+> **If an AWS representative has provided you with a pre-baked AMI** for your target region and instance type, set `AMI_ID` in `config.env` to that ID and skip to Step 2. Otherwise follow the instructions below to build your own.
 
-**Important:** AMIs are GPU-hardware-specific. Pick the variant matching your target instance type, and note the **Validated on** column — that lists the instance types each AMI has actually been tested against.
+The AMI carries everything an instance needs in order to stream: the NVIDIA GRID driver, CloudXR Runtime 6.2.1, the LÖVR sample v1.2.0, the OpenXR runtime registry fix, Windows Firewall rules, and the startup script.
 
-| AMI variant | Built using | Validated on | us-west-2 | us-west-1 | us-east-1 | us-east-2 |
-|---|---|---|---|---|---|---|
-| g6e, 1 GPU | `g6e.4xlarge` | `g6e.8xlarge` | `ami-02f1b69bd5fad4522` | N/A | `ami-02a102abf3b09becd` | `ami-0076eacb64fa2a235` |
-| g7e, 1 GPU | `g7e.8xlarge` | `g7e.8xlarge` | `ami-0a7bcd77b90558f9c` | N/A | `ami-02cd308eb6b345a3e` | `ami-0c21f6322c87839fb` |
-| g7e, 2 GPU | N/A | N/A | N/A | N/A | N/A | N/A |
-
-The **g7e, 1 GPU** and **g6e, 1 GPU** variants are published. The **g7e, 2 GPU** row is a placeholder for a variant that has not been built yet — build it yourself with `./ami/build-ami.sh` (see [Building your own AMI](#building-your-own-ami)) on `g7e.12xlarge`, the smallest dual-GPU g7e size. `us-west-1` is `N/A` for every row because that region offers neither instance family.
-
-**Portability across instance sizes is not guaranteed.** Matching GPU family and GPU count is necessary but has not proven sufficient — an AMI built on one size has been observed failing on a different size in the same family with the same GPU count (`nvidia-smi` unable to communicate with the driver). If your target instance type isn't in the **Validated on** column, test it before relying on it, or build your own AMI on that instance type using the steps below.
+**AMIs are GPU-hardware-specific**, so build on the GPU family and GPU count you intend to run. Matching family and count is necessary but has not proven sufficient — an AMI built on one size has been observed failing on a different size in the same family with the same GPU count (`nvidia-smi` unable to communicate with the driver). Building on your target instance type is the reliable path. If you build on one size and run on another, test it before relying on it.
 
 GPU count per instance size, for choosing a target type (verify with `aws ec2 describe-instance-types --instance-types <type> --query 'InstanceTypes[0].GpuInfo.Gpus[0].Count'`):
 
@@ -286,12 +278,7 @@ GPU count per instance size, for choosing a target type (verify with `aws ec2 de
 | 4 | `24xlarge` | `12xlarge`, `24xlarge` |
 | 8 | `48xlarge` | `48xlarge` |
 
-These are not contiguous ranges — `g6e.12xlarge` has 4 GPUs while the larger `g6e.16xlarge` has 1. There is no `g7e.xlarge` or `g7e.16xlarge`.
-
-> To use: set `AMI_ID` in `config.env` to the appropriate AMI for your region and instance type, then skip to Step 2.
-> To build your own (for custom configurations or regions not listed above): continue with the build instructions below.
->
-> **Note:** These AMIs are currently private. To request access, email laroue@amazon.com with your AWS account ID. Alternatively, build your own AMI using `./ami/build-ami.sh` — it produces a functionally equivalent AMI for whatever GPU instance type you build on.
+These are not contiguous ranges — `g6e.12xlarge` has 4 GPUs while the larger `g6e.16xlarge` has 1. There is no `g7e.xlarge` or `g7e.16xlarge`. Note also that `us-west-1` offers neither family, so neither can be built nor run in that region.
 
 ### Building your own AMI
 

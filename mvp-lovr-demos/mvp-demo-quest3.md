@@ -15,7 +15,9 @@ graph LR
 
 Minimal-effort instructions for proving the CloudXR streaming pipeline works: a single GPU instance streaming the LÖVR VR sample to Meta Quest 3 in immersive mode.
 
-Uses a **pre-built AMI** with everything pre-installed — no manual driver installs, no build tools, no compilation. You launch an instance, start the web server, and connect from Quest. The published AMIs are currently shared on request (see Step 2); if you would rather not wait, build your own with the full architecture's `./ami/build-ami.sh` and use that AMI ID here — set `GPU_ZONE` and `GPU_TYPE` in `deployment/config.env` first, and run the script from the `deployment/` directory.
+This demo runs from a **CloudXR AMI** with everything pre-installed, so there are no manual driver installs, build tools or compilation once you have one. You launch an instance, start the web server, and connect from Quest.
+
+The AMI is the one prerequisite. If an AWS representative has provided you with a pre-baked AMI for your target region and instance type, use that AMI ID below. Otherwise build one first with the full architecture's `./ami/build-ami.sh` — set `GPU_ZONE` and `GPU_TYPE` in `deployment/config.env`, run the script from the `deployment/` directory, and budget around two hours for the build. It is a one-time cost, and the resulting AMI is reusable for every run after that.
 
 ---
 
@@ -130,10 +132,10 @@ aws iam add-role-to-instance-profile --instance-profile-name cloudxr-mvp-demo-pr
 sleep 15  # Wait for IAM propagation
 ```
 
-Launch the instance using a pre-built AMI:
+Launch the instance from your CloudXR AMI:
 ```bash
-AMI_ID="ami-0a7bcd77b90558f9c"   # the AMI for your region + GPU family (see table below)
-INSTANCE_TYPE="g7e.8xlarge"      # an instance type this AMI is validated on (see table below)
+AMI_ID=""                        # your CloudXR AMI for this region (see note below)
+INSTANCE_TYPE="g7e.8xlarge"      # the instance type your AMI was built on
 
 INSTANCE_ID=$(aws ec2 run-instances \
   --image-id $AMI_ID \
@@ -151,19 +153,14 @@ echo "Instance: $INSTANCE_ID"
 aws ec2 wait instance-running --instance-ids $INSTANCE_ID --region $REGION
 ```
 
-> **Pre-built AMIs (g7e, 1 GPU):**
-> | Region | AMI ID |
-> |--------|--------|
-> | us-west-2 | `ami-0a7bcd77b90558f9c` |
-> | us-west-1 | N/A |
-> | us-east-1 | `ami-02cd308eb6b345a3e` |
-> | us-east-2 | `ami-0c21f6322c87839fb` |
+> **Set `AMI_ID` to a CloudXR AMI in the same region you are deploying into.** If an AWS
+> representative has provided you with a pre-baked AMI, use that ID. Otherwise build one with
+> the full architecture's [`./ami/build-ami.sh`](../deployment/full-architecture-deployment-guide.md#step-1-build-the-golden-ami).
 >
-> The values above are already filled into the commands — `ami-0a7bcd77b90558f9c` with `INSTANCE_TYPE=g7e.8xlarge`, matching the `us-west-2-lax-1b` zone used throughout this guide. If you deploy elsewhere, swap in the AMI for that region. `us-west-1` is `N/A` because the region offers no g7e or g6e instances.
->
-> This AMI is validated on `g7e.8xlarge`. AMIs are GPU-hardware-specific and portability across instance sizes is not guaranteed — the [full architecture guide's AMI table](../deployment/full-architecture-deployment-guide.md#step-1-build-the-golden-ami) is the canonical list, which also carries the g6e 1-GPU variant.
->
-> **Note:** These AMIs are currently private. To request access, email laroue@amazon.com with your AWS account ID. Alternatively, build your own AMI using the full architecture's `./ami/build-ami.sh` script — build it on the instance type you intend to run.
+> Set `INSTANCE_TYPE` to the instance type the AMI was built on. AMIs are GPU-hardware-specific
+> and portability across sizes is not guaranteed, so running a different size than you built on
+> needs testing first. `INSTANCE_TYPE` above is `g7e.8xlarge` to match the `us-west-2-lax-1b`
+> zone used throughout this guide. Note that `us-west-1` offers no g7e or g6e instances at all.
 
 ---
 
@@ -280,7 +277,7 @@ The startup log should show `ICE + STUN configuration already present in cloudxr
 
 ## Step 6: Start the CloudXR.js Dev Server
 
-The pre-built AMI includes the CloudXR.js React sample, but the HTTP dev server is not started automatically. First, open the Windows Firewall for port 8080 (not included in the AMI's default rules), then start the server:
+The AMI includes the CloudXR.js React sample, but the HTTP dev server is not started automatically. First, open the Windows Firewall for port 8080 (not included in the AMI's default rules), then start the server:
 
 ```bash
 CMD_ID=$(aws ssm send-command --instance-ids $INSTANCE_ID \

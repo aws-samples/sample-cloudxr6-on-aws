@@ -1,6 +1,6 @@
 # CloudXR 6 on AWS — Full Architecture Deployment Guide
 
-This guide deploys the complete [CloudXR 6 on AWS reference architecture](https://github.com/laroueaws/cloudxr-aws-reference-architecture/blob/main/architecture/architecture.md) as a working system: WebSocket proxy, client authentication, instance registry, GPU compute fleet, and all supporting networking and security.
+This guide deploys the complete [CloudXR 6 on AWS reference architecture](../architecture/architecture.md) as a working system: WebSocket proxy, client authentication, instance registry, GPU compute fleet, and all supporting networking and security.
 
 **Target SDK versions:** CloudXR Runtime 6.2.1, CloudXR.js 6.2.0, LÖVR sample v1.2.0.
 
